@@ -8,7 +8,9 @@ import clsx from 'clsx';
 interface SlotProps {
   slot: SlotType;
   owner: 'player' | 'ai';
-  isRevealing?: boolean; // true during the reveal animation beat
+  isRevealing?: boolean;   // true during the reveal animation beat
+  onClick?: () => void;    // placement/removal target — player slots only
+  clickable?: boolean;     // true when this slot is a valid click target right now
 }
 
 // [BLOCK: Outcome Config]
@@ -20,10 +22,15 @@ const OUTCOME_CONFIG: Partial<Record<SlotType['state'], { label: string; classNa
 };
 
 // [BLOCK: Component]
-export function Slot({ slot, owner, isRevealing = false }: SlotProps) {
+// Phase 4 layout redesign: this is now also the placement/removal target —
+// the old standalone Hand slot-target row has been folded into here.
+// Clicking an empty player slot with a card selected places it; clicking a
+// placed player slot (still in 'placement' phase) removes it back to hand.
+export function Slot({ slot, owner, isRevealing = false, onClick, clickable = false }: SlotProps) {
   const outcome = OUTCOME_CONFIG[slot.state];
   const isFaceDown = slot.state === 'placed';
   const isEmpty = slot.state === 'empty';
+  const interactive = clickable && !!onClick;
 
   return (
     <div
@@ -33,13 +40,20 @@ export function Slot({ slot, owner, isRevealing = false }: SlotProps) {
         outcome?.className,
         isRevealing && 'slot--revealing',
         isEmpty && 'slot--empty',
+        interactive && 'slot--clickable',
       )}
-      aria-label={`${owner} ${slot.key} slot${outcome ? `: ${outcome.label}` : ''}`}
+      onClick={interactive ? onClick : undefined}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onKeyDown={interactive ? (e) => e.key === 'Enter' && onClick?.() : undefined}
+      aria-label={`${owner} ${slot.key} slot${outcome ? `: ${outcome.label}` : isEmpty ? ' (empty)' : ''}`}
     >
       {slot.card ? (
         <Card card={slot.card} faceDown={isFaceDown} />
       ) : (
-        <div className="slot__placeholder" aria-hidden="true" />
+        <div className="slot__placeholder" aria-hidden="true">
+          {interactive && <span className="slot__hint">+</span>}
+        </div>
       )}
 
       {outcome && (
@@ -52,8 +66,8 @@ export function Slot({ slot, owner, isRevealing = false }: SlotProps) {
 // [BLOCK: Slot Styles]
 export const slotStyles = `
   .slot {
-    width: 88px;
-    min-height: 120px;
+    width: 76px;
+    min-height: 104px;
     border-radius: 10px;
     border: 2px solid #333;
     display: flex;
@@ -63,8 +77,8 @@ export const slotStyles = `
     gap: 6px;
     position: relative;
     background: #111;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    padding: 8px 0;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+    padding: 6px 0;
   }
 
   .slot--empty {
@@ -73,10 +87,30 @@ export const slotStyles = `
   }
 
   .slot__placeholder {
-    width: 72px;
-    height: 100px;
+    width: 62px;
+    height: 86px;
     border-radius: 8px;
     background: #1a1a1a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .slot__hint {
+    font-size: 22px;
+    color: #444;
+    font-weight: 300;
+  }
+
+  .slot--clickable {
+    cursor: pointer;
+  }
+  .slot--clickable:hover {
+    border-color: #f0c040;
+    transform: translateY(-2px);
+  }
+  .slot--clickable:hover .slot__hint {
+    color: #f0c040;
   }
 
   .slot--revealing {

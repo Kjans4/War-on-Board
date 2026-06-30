@@ -1,18 +1,19 @@
 // src/components/RoundHistory.tsx
 
-import { useState } from 'react';
 import type { RoundHistoryEntry, SlotKey, CombatOutcome } from '../types/game';
 import { SLOT_KEYS } from '../types/game';
 import clsx from 'clsx';
 
 // [BLOCK: Props]
+// Phase 4 layout redesign: this is now permanent sidebar content (per the
+// layout sketch) rather than a collapsible panel — the toggle/expanded
+// state from 3.6 is gone. It fills the space between the round counter and
+// the Play button, scrolling internally so it never grows the page.
 interface RoundHistoryProps {
   history: RoundHistoryEntry[];
-  defaultExpanded?: boolean;
 }
 
 // [BLOCK: Outcome Label Config]
-// Mirrors Slot.tsx's OUTCOME_CONFIG so history badges match in-game badges.
 const OUTCOME_LABELS: Record<CombatOutcome, string> = {
   won: 'Win',
   lost: 'Loss',
@@ -21,86 +22,62 @@ const OUTCOME_LABELS: Record<CombatOutcome, string> = {
 };
 
 // [BLOCK: Component]
-export function RoundHistory({ history, defaultExpanded = false }: RoundHistoryProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-
-  // Most recent round first — easier to check what just happened without
-  // scrolling past the whole match.
+export function RoundHistory({ history }: RoundHistoryProps) {
+  // Most recent round first
   const orderedHistory = [...history].reverse();
 
   return (
-    <div className={clsx('round-history', expanded && 'round-history--expanded')}>
+    <div className="round-history">
+      <span className="round-history__heading">
+        Round History {history.length > 0 && `(${history.length})`}
+      </span>
 
-      {/* [SUB-BLOCK: Toggle Header] */}
-      <button
-        className="round-history__toggle"
-        onClick={() => setExpanded((prev) => !prev)}
-        aria-expanded={expanded}
-        aria-controls="round-history-panel"
-      >
-        <span className="round-history__toggle-label">
-          Round History {history.length > 0 && `(${history.length})`}
-        </span>
-        <span className="round-history__toggle-chevron" aria-hidden="true">
-          {expanded ? '▾' : '▸'}
-        </span>
-      </button>
+      <div className="round-history__panel">
+        {orderedHistory.length === 0 ? (
+          <p className="round-history__empty">No rounds completed yet.</p>
+        ) : (
+          <ul className="round-history__list">
+            {orderedHistory.map((entry) => (
+              <li key={entry.round} className="round-history__entry">
 
-      {/* [SUB-BLOCK: Panel] */}
-      {expanded && (
-        <div id="round-history-panel" className="round-history__panel">
-          {orderedHistory.length === 0 ? (
-            <p className="round-history__empty">No rounds completed yet.</p>
-          ) : (
-            <ul className="round-history__list">
-              {orderedHistory.map((entry) => (
-                <li key={entry.round} className="round-history__entry">
+                <div className="round-history__entry-header">
+                  <span className="round-history__round-label">
+                    Round {entry.round}
+                  </span>
+                  <span className="round-history__counts">
+                    {entry.playerCardsAfter} · {entry.aiCardsAfter}
+                  </span>
+                </div>
 
-                  <div className="round-history__entry-header">
-                    <span className="round-history__round-label">
-                      Round {entry.round}
-                    </span>
-                    <span className="round-history__counts">
-                      You: {entry.playerCardsAfter} &nbsp;·&nbsp; Opponent: {entry.aiCardsAfter}
-                    </span>
-                  </div>
+                <div className="round-history__slots">
+                  {SLOT_KEYS.map((key: SlotKey) => {
+                    const outcome = entry.resolutions[key];
+                    return (
+                      <div
+                        key={key}
+                        className={clsx(
+                          'round-history__slot',
+                          `round-history__slot--${outcome.player}`,
+                        )}
+                      >
+                        <span className="round-history__matchup">
+                          {entry.playerSlots[key]}
+                          <span className="round-history__vs" aria-hidden="true">vs</span>
+                          {entry.aiSlots[key]}
+                        </span>
+                        <span className="round-history__outcome-badge">
+                          {OUTCOME_LABELS[outcome.player]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                  <div className="round-history__slots">
-                    {SLOT_KEYS.map((key: SlotKey) => {
-                      const outcome = entry.resolutions[key];
-                      return (
-                        <div
-                          key={key}
-                          className={clsx(
-                            'round-history__slot',
-                            `round-history__slot--${outcome.player}`,
-                          )}
-                        >
-                          <span className="round-history__slot-key">{key}</span>
-                          <span className="round-history__matchup">
-                            <span className="round-history__player-card">
-                              {entry.playerSlots[key]}
-                            </span>
-                            <span className="round-history__vs" aria-hidden="true">vs</span>
-                            <span className="round-history__ai-card">
-                              {entry.aiSlots[key]}
-                            </span>
-                          </span>
-                          <span className="round-history__outcome-badge">
-                            {OUTCOME_LABELS[outcome.player]}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -108,47 +85,35 @@ export function RoundHistory({ history, defaultExpanded = false }: RoundHistoryP
 // [BLOCK: Styles]
 export const roundHistoryStyles = `
   .round-history {
-    width: 100%;
-    max-width: 480px;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     border-radius: 10px;
     border: 1px solid #222;
     background: #0d0d1a;
     overflow: hidden;
   }
 
-  .round-history__toggle {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    background: transparent;
-    border: none;
-    color: #999;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s;
-  }
-
-  .round-history__toggle:hover {
-    color: #ccc;
-    background: rgba(255,255,255,0.03);
-  }
-
-  .round-history__toggle-chevron {
+  .round-history__heading {
+    padding: 10px 12px;
     font-size: 11px;
-    color: #555;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #888;
+    border-bottom: 1px solid #1c1c2a;
+    flex-shrink: 0;
   }
 
   .round-history__panel {
-    border-top: 1px solid #1c1c2a;
-    max-height: 280px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
   }
 
   .round-history__empty {
-    padding: 14px;
+    padding: 14px 12px;
     margin: 0;
     font-size: 12px;
     color: #555;
@@ -162,7 +127,7 @@ export const roundHistoryStyles = `
   }
 
   .round-history__entry {
-    padding: 10px 14px;
+    padding: 8px 12px;
     border-bottom: 1px solid #161622;
   }
 
@@ -174,11 +139,11 @@ export const roundHistoryStyles = `
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    margin-bottom: 6px;
+    margin-bottom: 5px;
   }
 
   .round-history__round-label {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     color: #ccc;
     text-transform: uppercase;
@@ -186,52 +151,45 @@ export const roundHistoryStyles = `
   }
 
   .round-history__counts {
-    font-size: 11px;
+    font-size: 10px;
     color: #666;
   }
 
   .round-history__slots {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
   }
 
   .round-history__slot {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 8px;
-    border-radius: 6px;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 3px 6px;
+    border-radius: 5px;
     background: #111120;
   }
 
-  .round-history__slot-key {
-    width: 44px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #555;
-    font-weight: 600;
-  }
-
   .round-history__matchup {
-    flex: 1;
+    font-size: 11px;
+    color: #999;
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 12px;
+    gap: 4px;
   }
 
-  .round-history__player-card { color: #6a9; font-weight: 600; }
-  .round-history__ai-card     { color: #c77; font-weight: 600; }
-  .round-history__vs          { color: #444; font-size: 10px; }
+  .round-history__vs {
+    color: #444;
+    font-size: 9px;
+  }
 
   .round-history__outcome-badge {
-    font-size: 9px;
+    font-size: 8px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    padding: 2px 6px;
+    padding: 2px 5px;
     border-radius: 4px;
     white-space: nowrap;
   }
