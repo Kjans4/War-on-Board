@@ -71,7 +71,9 @@ export function Board({
     <div className="battlefield-row">
 
       {/* [SUB-BLOCK: Opponent Stack — left edge] */}
-      <StackIcon count={aiStackCount} label="Opponent" />
+      <div className="stack-col-wrap stack-col-wrap--ai">
+        <StackIcon count={aiStackCount} label="Opponent" />
+      </div>
 
       {/* [SUB-BLOCK: Battlefield] */}
       <div className="battlefield">
@@ -125,7 +127,7 @@ export function Board({
       </div>
 
       {/* [SUB-BLOCK: Player Stack + Shuffle — right edge] */}
-      <div className="stack-col-wrap">
+      <div className="stack-col-wrap stack-col-wrap--player">
         <StackIcon count={playerStackCount} label="You" />
         <button
           className="stack-col__shuffle"
@@ -145,7 +147,7 @@ export function Board({
 export const boardStyles = `
   .battlefield-row {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: center;
     gap: 28px;
   }
@@ -227,6 +229,16 @@ export const boardStyles = `
     flex-direction: column;
     align-items: center;
     gap: 10px;
+  }
+
+  .stack-col-wrap--ai {
+    align-self: flex-start;
+    margin-top: 4px;
+  }
+
+  .stack-col-wrap--player {
+    align-self: flex-end;
+    margin-bottom: 4px;
   }
 
   .stack-col {
