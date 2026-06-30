@@ -6,6 +6,7 @@ import { getAIPlacement } from './logic/ai';
 import { Board, boardStyles } from './components/Board';
 import { Hand, handStyles } from './components/Hand';
 import { HUD, hudStyles } from './components/HUD';
+import { RoundHistory, roundHistoryStyles } from './components/RoundHistory';
 import { cardStyles } from './components/Card';
 import { slotStyles } from './components/Slot';
 import type { AIDifficulty, Card as CardType, SlotKey } from './types/game';
@@ -20,6 +21,7 @@ const combinedStyles = [
   boardStyles,
   handStyles,
   hudStyles,
+  roundHistoryStyles,
 ].join('\n');
 
 // [BLOCK: App Shell Styles]
@@ -71,6 +73,7 @@ function App() {
     aiSlots,
     ai,
     result,
+    roundHistory,
   } = state;
 
   // [BLOCK: Auto-draw at round start]
@@ -118,9 +121,8 @@ function App() {
 
   function handleConfirmPlacement() {
     if (!canConfirm) return;
-    // AI commits its 3 cards using the current difficulty's strategy.
-    // Smart AI counter-logic lands in Phase 3 — getAIPlacement already
-    // routes correctly, it just falls back to random until then.
+    // AI commits its 3 cards using the current difficulty's strategy
+    // (Smart AI's counter-selection logic lives in logic/ai.ts).
     const placements = getAIPlacement(aiHand, ai, round);
     dispatch({ type: 'PLACE_AI_CARDS', placements });
   }
@@ -191,6 +193,8 @@ function App() {
             disabled={phase !== 'placement'}
           />
         )}
+
+        <RoundHistory history={roundHistory} />
       </div>
     </>
   );
