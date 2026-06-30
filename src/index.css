@@ -50,13 +50,24 @@
   }
 }
 
+/*
+  [BLOCK: Root Container — Phase 4 layout fix]
+  Was `min-height: 100svh` — a *minimum* lets the box grow to fit content
+  with no ceiling, which silently defeated every "flex:1 / min-height:0"
+  scroll-containment trick further down the tree (App shell -> sidebar ->
+  round history). Changed to a fixed `height` + `overflow: hidden` so
+  there's an actual bounded container for the rest of the layout to clip
+  and scroll against. This is the real fix for "page becomes scrollable
+  when round history gets long."
+*/
 #root {
   width: 1126px;
   max-width: 100%;
   margin: 0 auto;
   text-align: center;
   border-inline: 1px solid var(--border);
-  min-height: 100svh;
+  height: 100svh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;

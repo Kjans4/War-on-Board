@@ -37,17 +37,22 @@ const appStyles = `
     display: flex;
     flex: 1;
     min-height: 0;
+    height: 100svh;
     width: 100%;
+    box-sizing: border-box;
   }
 
   .app-sidebar {
     width: 200px;
     flex-shrink: 0;
+    min-height: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
     padding: 20px 14px;
     border-right: 1px solid var(--border, #222);
     gap: 0;
+    box-sizing: border-box;
   }
 
   .app-center {
