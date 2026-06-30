@@ -121,7 +121,7 @@ function App() {
     // AI commits its 3 cards using the current difficulty's strategy.
     // Smart AI counter-logic lands in Phase 3 — getAIPlacement already
     // routes correctly, it just falls back to random until then.
-    const placements = getAIPlacement(aiHand, ai);
+    const placements = getAIPlacement(aiHand, ai, round);
     dispatch({ type: 'PLACE_AI_CARDS', placements });
   }
 
