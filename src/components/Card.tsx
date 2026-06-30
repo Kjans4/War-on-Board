@@ -4,8 +4,6 @@ import type { Card as CardType } from '../types/game';
 import clsx from 'clsx';
 
 // [BLOCK: Type Config]
-// Visual label and color class per card type.
-// Phase 4 will replace these with illustrated card faces.
 const TYPE_CONFIG: Record<CardType['type'], { label: string; symbol: string; colorClass: string }> = {
   Sword:  { label: 'Sword',  symbol: '⚔️',  colorClass: 'card--sword'  },
   Arrow:  { label: 'Arrow',  symbol: '🏹',  colorClass: 'card--arrow'  },
@@ -15,26 +13,28 @@ const TYPE_CONFIG: Record<CardType['type'], { label: string; symbol: string; col
 // [BLOCK: Props]
 interface CardProps {
   card: CardType;
-  faceDown?: boolean;       // true when placed in a slot or in AI hand
-  selected?: boolean;       // highlighted in hand before placement
-  disabled?: boolean;       // not selectable (e.g. already placed 3 cards)
+  faceDown?: boolean;       // toggling this now plays a real 3D flip
+  selected?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
 }
 
 // [BLOCK: Component]
+// Phase 4 reveal animation: real two-sided flip via a 3D-rotated inner
+// wrapper with two stacked, backface-hidden faces. Toggling `faceDown`
+// (e.g. placement -> reveal phase transitions) now animates instead of
+// instantly swapping content — this is what makes the "flip down on Play,
+// flip up on reveal" sequence in App.tsx actually visible.
 export function Card({ card, faceDown = false, selected = false, disabled = false, onClick }: CardProps) {
   const config = TYPE_CONFIG[card.type];
 
   return (
     <div
       className={clsx(
-        'card',
-        !faceDown && config.colorClass,
-        faceDown    && 'card--face-down',
-        card.exhausted && !faceDown && 'card--exhausted',
-        selected    && 'card--selected',
-        disabled    && 'card--disabled',
-        onClick     && !disabled && 'card--clickable',
+        'card-flip',
+        selected  && 'card-flip--selected',
+        disabled  && 'card-flip--disabled',
+        onClick && !disabled && 'card-flip--clickable',
       )}
       onClick={!disabled ? onClick : undefined}
       role={onClick ? 'button' : undefined}
@@ -42,27 +42,72 @@ export function Card({ card, faceDown = false, selected = false, disabled = fals
       onKeyDown={onClick && !disabled ? (e) => e.key === 'Enter' && onClick() : undefined}
       aria-label={faceDown ? 'Hidden card' : `${config.label}${card.exhausted ? ' (exhausted)' : ''}`}
     >
-      {faceDown ? (
-        <span className="card__back-symbol">?</span>
-      ) : (
-        <>
+      <div className={clsx('card-flip__inner', faceDown && 'card-flip__inner--flipped')}>
+
+        {/* Front face — face-up content */}
+        <div className={clsx('card-face', 'card-face--front', config.colorClass, card.exhausted && 'card--exhausted')}>
           <span className="card__symbol" aria-hidden="true">{config.symbol}</span>
           <span className="card__label">{config.label}</span>
           {card.exhausted && (
             <span className="card__exhausted-badge" aria-hidden="true">E</span>
           )}
-        </>
-      )}
+        </div>
+
+        {/* Back face — face-down content */}
+        <div className="card-face card-face--back">
+          <span className="card__back-symbol">?</span>
+        </div>
+
+      </div>
     </div>
   );
 }
 
 // [BLOCK: Styles]
-// Injected as a style tag — will be replaced by CSS file in Phase 4.
 export const cardStyles = `
-  .card {
+  .card-flip {
     width: 72px;
     height: 100px;
+    position: relative;
+    perspective: 800px;
+    font-family: system-ui, sans-serif;
+    color: #fff;
+    user-select: none;
+    transition: transform 0.15s ease;
+  }
+
+  .card-flip--clickable {
+    cursor: pointer;
+  }
+  .card-flip--clickable:hover {
+    transform: translateY(-4px);
+  }
+
+  .card-flip--selected {
+    transform: translateY(-6px);
+  }
+
+  .card-flip--disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .card-flip__inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.45s cubic-bezier(0.4, 0.1, 0.2, 1);
+  }
+
+  .card-flip__inner--flipped {
+    transform: rotateY(180deg);
+  }
+
+  .card-face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
     border-radius: 8px;
     border: 2px solid #444;
     display: flex;
@@ -70,47 +115,24 @@ export const cardStyles = `
     align-items: center;
     justify-content: center;
     gap: 4px;
-    position: relative;
     background: #1a1a2e;
-    color: #fff;
-    font-family: system-ui, sans-serif;
-    user-select: none;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.4);
   }
 
-  .card--clickable {
-    cursor: pointer;
-  }
-  .card--clickable:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 6px 16px rgba(0,0,0,0.4);
-  }
-
-  .card--selected {
+  .card-flip--selected .card-face--front {
     border-color: #f0c040;
     box-shadow: 0 0 12px rgba(240,192,64,0.6);
-    transform: translateY(-6px);
   }
 
-  .card--disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
+  /* Front face type colors */
+  .card-face--front.card--sword  { border-color: #e05252; background: #2a1a1a; }
+  .card-face--front.card--arrow  { border-color: #52b0e0; background: #1a2230; }
+  .card-face--front.card--shield { border-color: #52c87a; background: #1a2a1e; }
 
-  .card--face-down {
-    background: #2a2a4a;
-    border-color: #555;
-  }
-
-  .card--exhausted {
+  .card-face--front.card--exhausted {
     opacity: 0.75;
     border-style: dashed;
   }
-
-  /* Type colors */
-  .card--sword  { border-color: #e05252; background: #2a1a1a; }
-  .card--arrow  { border-color: #52b0e0; background: #1a2230; }
-  .card--shield { border-color: #52c87a; background: #1a2a1e; }
 
   .card__symbol {
     font-size: 28px;
@@ -123,6 +145,12 @@ export const cardStyles = `
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: #ccc;
+  }
+
+  .card-face--back {
+    background: #2a2a4a;
+    border-color: #555;
+    transform: rotateY(180deg);
   }
 
   .card__back-symbol {
