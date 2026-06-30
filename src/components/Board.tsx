@@ -155,27 +155,18 @@ export const boardStyles = `
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    padding: 16px 20px;
-    background: #0d0d1a;
-    border-radius: 16px;
-    border: 1px solid #222;
   }
 
   .battlefield__opp-hand {
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    min-height: 56px;
+    min-height: 84px;
     margin-bottom: 2px;
   }
 
   .battlefield__opp-card-wrap {
     transform-origin: top center;
-  }
-
-  .battlefield__opp-card-wrap .card {
-    width: 44px;
-    height: 60px;
   }
 
   .battlefield__row {

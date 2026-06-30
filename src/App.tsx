@@ -61,9 +61,9 @@ const appStyles = `
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 18px;
-    padding: 16px;
+    padding: 36px 16px 16px;
   }
 
   .app-title {
