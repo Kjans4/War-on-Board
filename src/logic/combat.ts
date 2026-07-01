@@ -109,9 +109,7 @@ export function resolveRound(
 // Given a round resolution, returns which cards go back to the stack bottom.
 // won → returns to stack
 // tied → returns to stack (exhausted flag already set in resolveSlot)
-// tied-lost → also returns to stack (still exhausted) — design change from
-//   original GDD which discarded both; returning them keeps cards in play
-// lost → discarded (not returned)
+// lost / tied-lost → discarded (not returned)
 export function getSurvivors(resolution: RoundResolution): {
   playerSurvivors: Card[];
   aiSurvivors: Card[];
