@@ -23,7 +23,7 @@ const OUTCOME_CONFIG: Partial<Record<SlotType['state'], { label: string; classNa
   won:       { label: 'Win',  className: 'slot--won'       },
   lost:      { label: 'Loss', className: 'slot--lost'      },
   tied:      { label: 'Tie',  className: 'slot--tied'      },
-  'tied-lost': { label: 'Gone', className: 'slot--tied-lost' },
+  'tied-lost': { label: 'Spent', className: 'slot--tied-lost' },
 };
 
 // [BLOCK: Component]

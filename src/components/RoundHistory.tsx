@@ -18,7 +18,7 @@ const OUTCOME_LABELS: Record<CombatOutcome, string> = {
   won: 'Win',
   lost: 'Loss',
   tied: 'Tie',
-  'tied-lost': 'Gone',
+  'tied-lost': 'Spent',
 };
 
 // [BLOCK: Component]

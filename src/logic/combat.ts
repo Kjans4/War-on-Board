@@ -109,7 +109,9 @@ export function resolveRound(
 // Given a round resolution, returns which cards go back to the stack bottom.
 // won → returns to stack
 // tied → returns to stack (exhausted flag already set in resolveSlot)
-// lost / tied-lost → discarded (not returned)
+// tied-lost → also returns to stack (still exhausted) — design change from
+//   original GDD which discarded both; returning them keeps cards in play
+// lost → discarded (not returned)
 export function getSurvivors(resolution: RoundResolution): {
   playerSurvivors: Card[];
   aiSurvivors: Card[];
@@ -120,8 +122,8 @@ export function getSurvivors(resolution: RoundResolution): {
   for (const key of SLOT_KEYS) {
     const { player, ai, playerCard, aiCard } = resolution[key];
 
-    if (player === 'won' || player === 'tied') playerSurvivors.push(playerCard);
-    if (ai === 'won' || ai === 'tied') aiSurvivors.push(aiCard);
+    if (player === 'won' || player === 'tied' || player === 'tied-lost') playerSurvivors.push(playerCard);
+    if (ai === 'won' || ai === 'tied' || ai === 'tied-lost') aiSurvivors.push(aiCard);
   }
 
   return { playerSurvivors, aiSurvivors };
