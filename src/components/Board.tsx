@@ -6,20 +6,58 @@ import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
 
+// [BLOCK: Reveal Step Type]
+// Exported so App.tsx can type its local animation state.
+// null     = not in reveal sequence (placement or post-resolution)
+// flipping = Play clicked, all cards flip face-down (2s pause before left reveals)
+// left     = left slot revealing
+// center   = center slot revealing
+// right    = right slot revealing
+// done     = all revealed, awaiting Next Round
+export type RevealStep = null | 'flipping' | 'left' | 'center' | 'right' | 'done';
+
+// [BLOCK: Per-slot visual state]
+// Given the current reveal step, returns whether each slot should be shown
+// face-down and whether its outcome badge/glow should be visible.
+// This decouples "what the game state says" from "what's currently on screen"
+// so the staggered reveal can show each slot individually while the reducer
+// already has the final outcome for all three.
+function slotVisuals(
+  slotKey: SlotKey,
+  revealStep: RevealStep,
+  hasCard: boolean,
+): { visuallyFaceDown: boolean; showOutcome: boolean } {
+  if (!hasCard || revealStep === null || revealStep === 'done') {
+    return { visuallyFaceDown: false, showOutcome: revealStep === 'done' };
+  }
+
+  const ORDER: SlotKey[] = ['left', 'center', 'right'];
+  const stepIndex: Record<string, number> = {
+    flipping: -1, // nothing revealed yet
+    left: 0,
+    center: 1,
+    right: 2,
+  };
+
+  const revealedUpTo = stepIndex[revealStep] ?? -1;
+  const slotIndex = ORDER.indexOf(slotKey);
+
+  const revealed = slotIndex <= revealedUpTo;
+  return {
+    visuallyFaceDown: !revealed,
+    showOutcome: revealed,
+  };
+}
+
 // [BLOCK: Props]
-// Phase 4 layout redesign: this is now the "Battlefield" — opponent hand
-// (face-down) -> opponent slots -> VS -> player slots, all in one block,
-// flanked by each side's stack count (+ shuffle, player side only).
-// Player slots double as placement/removal targets, replacing the old
-// separate Hand slot-target row.
 interface BoardProps {
   playerSlots: BoardSlots;
   aiSlots: BoardSlots;
-  aiHand: CardType[];          // rendered face-down, count only matters visually
-  revealingSlot?: SlotKey | null;
+  aiHand: CardType[];
+  revealStep: RevealStep;
   selectedCardId: string | null;
   onSlotClick: (slotKey: SlotKey) => void;
-  placementActive: boolean;    // true only during 'placement' phase
+  placementActive: boolean;
   playerStackCount: number;
   aiStackCount: number;
   onShuffleStack: () => void;
@@ -27,15 +65,12 @@ interface BoardProps {
 }
 
 // [BLOCK: Opponent Hand Fan]
-// Small face-down fan showing the AI's hand size — never reveals contents.
 function fanStyle(index: number, total: number): CSSProperties {
   if (total <= 1) return {};
   const mid = (total - 1) / 2;
   const offset = index - mid;
-  const rotate = offset * 6;
-  const translateY = Math.abs(offset) * 5;
   return {
-    transform: `translateY(${translateY}px) rotate(${rotate}deg)`,
+    transform: `translateY(${Math.abs(offset) * 5}px) rotate(${offset * 6}deg)`,
     transformOrigin: 'top center',
     marginLeft: index === 0 ? 0 : -22,
     zIndex: total - index,
@@ -58,7 +93,7 @@ export function Board({
   playerSlots,
   aiSlots,
   aiHand,
-  revealingSlot,
+  revealStep,
   selectedCardId,
   onSlotClick,
   placementActive,
@@ -70,7 +105,7 @@ export function Board({
   return (
     <div className="battlefield-row">
 
-      {/* [SUB-BLOCK: Opponent Stack — left edge] */}
+      {/* [SUB-BLOCK: Opponent Stack — left edge, floats toward opponent's row] */}
       <div className="stack-col-wrap stack-col-wrap--ai">
         <StackIcon count={aiStackCount} label="Opponent" />
       </div>
@@ -78,7 +113,7 @@ export function Board({
       {/* [SUB-BLOCK: Battlefield] */}
       <div className="battlefield">
 
-        {/* Opponent hand — face-down fan */}
+        {/* Opponent hand — always face-down */}
         <div className="battlefield__opp-hand" aria-label={`Opponent hand: ${aiHand.length} cards`}>
           {aiHand.map((card, i) => (
             <div key={card.id} className="battlefield__opp-card-wrap" style={fanStyle(i, aiHand.length)}>
@@ -91,9 +126,18 @@ export function Board({
         <div className="battlefield__row battlefield__row--ai">
           <span className="battlefield__row-label">Opponent</span>
           <div className="battlefield__slots">
-            {SLOT_KEYS.map((key) => (
-              <Slot key={key} slot={aiSlots[key]} owner="ai" isRevealing={revealingSlot === key} />
-            ))}
+            {SLOT_KEYS.map((key) => {
+              const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!aiSlots[key].card);
+              return (
+                <Slot
+                  key={key}
+                  slot={aiSlots[key]}
+                  owner="ai"
+                  visuallyFaceDown={visuallyFaceDown}
+                  showOutcome={showOutcome}
+                />
+              );
+            })}
           </div>
         </div>
 
@@ -102,19 +146,20 @@ export function Board({
           <span className="battlefield__divider-label">vs</span>
         </div>
 
-        {/* Player slots — placement/removal targets */}
+        {/* Player slots */}
         <div className="battlefield__row battlefield__row--player">
           <div className="battlefield__slots">
             {SLOT_KEYS.map((key) => {
               const slot = playerSlots[key];
-              const clickable =
-                placementActive && (slot.card !== null || selectedCardId !== null);
+              const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!slot.card);
+              const clickable = placementActive && (slot.card !== null || selectedCardId !== null);
               return (
                 <Slot
                   key={key}
                   slot={slot}
                   owner="player"
-                  isRevealing={revealingSlot === key}
+                  visuallyFaceDown={visuallyFaceDown}
+                  showOutcome={showOutcome}
                   onClick={() => onSlotClick(key)}
                   clickable={clickable}
                 />
@@ -126,7 +171,7 @@ export function Board({
 
       </div>
 
-      {/* [SUB-BLOCK: Player Stack + Shuffle — right edge] */}
+      {/* [SUB-BLOCK: Player Stack + Shuffle — right edge, floats toward player's row] */}
       <div className="stack-col-wrap stack-col-wrap--player">
         <StackIcon count={playerStackCount} label="You" />
         <button
@@ -186,13 +231,8 @@ export const boardStyles = `
     color: #555;
   }
 
-  .battlefield__row--player .battlefield__row-label {
-    color: #6a9;
-  }
-
-  .battlefield__row--ai .battlefield__row-label {
-    color: #a66;
-  }
+  .battlefield__row--player .battlefield__row-label { color: #6a9; }
+  .battlefield__row--ai     .battlefield__row-label { color: #a66; }
 
   .battlefield__slots {
     display: flex;
@@ -223,7 +263,7 @@ export const boardStyles = `
     font-weight: 700;
   }
 
-  /* Stack columns (edges) */
+  /* Stack columns */
   .stack-col-wrap {
     display: flex;
     flex-direction: column;
@@ -231,15 +271,8 @@ export const boardStyles = `
     gap: 10px;
   }
 
-  .stack-col-wrap--ai {
-    align-self: flex-start;
-    margin-top: 4px;
-  }
-
-  .stack-col-wrap--player {
-    align-self: flex-end;
-    margin-bottom: 4px;
-  }
+  .stack-col-wrap--ai     { align-self: flex-start; margin-top: 4px; }
+  .stack-col-wrap--player { align-self: flex-end;   margin-bottom: 4px; }
 
   .stack-col {
     display: flex;
@@ -284,13 +317,6 @@ export const boardStyles = `
     white-space: nowrap;
   }
 
-  .stack-col__shuffle:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-
-  .stack-col__shuffle:not(:disabled):hover {
-    border-color: #555;
-    color: #bbb;
-  }
+  .stack-col__shuffle:disabled { opacity: 0.35; cursor: not-allowed; }
+  .stack-col__shuffle:not(:disabled):hover { border-color: #555; color: #bbb; }
 `;

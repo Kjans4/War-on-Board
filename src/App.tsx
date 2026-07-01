@@ -1,9 +1,10 @@
 // src/App.tsx
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGameState } from './state/useGameState';
 import { getAIPlacement } from './logic/ai';
 import { Board, boardStyles } from './components/Board';
+import type { RevealStep } from './components/Board';
 import { Hand, handStyles } from './components/Hand';
 import { RoundCounter, PlayFooter, hudStyles } from './components/HUD';
 import { RoundHistory, roundHistoryStyles } from './components/RoundHistory';
@@ -14,9 +15,6 @@ import type { Card as CardType, SlotKey } from './types/game';
 import { SLOT_KEYS } from './types/game';
 
 // [BLOCK: Combined Component Styles]
-// Phase 1-3 prototype convention — each component ships its own
-// template-string styles. Phase 4.1 (design tokens) will eventually
-// replace this with a real stylesheet; not part of this layout pass.
 const combinedStyles = [
   cardStyles,
   slotStyles,
@@ -28,10 +26,6 @@ const combinedStyles = [
 ].join('\n');
 
 // [BLOCK: App Shell Styles]
-// Phase 4 layout redesign: three-column, single-viewport layout.
-// Left = sidebar (round counter, round history, Play button).
-// Center = battlefield (Board) + player hand, flanked by stack columns.
-// No scrolling at the page level — Round History scrolls internally.
 const appStyles = `
   .app-shell {
     display: flex;
@@ -94,10 +88,26 @@ const appStyles = `
   }
 `;
 
+// [BLOCK: Reveal Sequence Timings (ms)]
+const FLIP_TO_LEFT_MS    = 2000; // suspense after flip before Left reveals
+const LEFT_TO_CENTER_MS  = 1500; // gap between Left and Center
+const CENTER_TO_RIGHT_MS = 1500; // gap between Center and Right
+const RIGHT_TO_DONE_MS   = 800;  // brief hold after Right before Play lights up
+
 function App() {
   const [started, setStarted] = useState(false);
   const { state, dispatch } = useGameState('random');
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [revealStep, setRevealStep] = useState<RevealStep>(null);
+
+  // [BLOCK: Reveal Refs]
+  // revealTimers: timer IDs so handleBackToMenu can clear them on hard exit.
+  // revealFiredForRound: guards against double-firing the reveal effect when
+  // React re-runs it after REVEAL_ROUND changes phase reveal→resolution.
+  // The effect intentionally has NO cleanup return — timers must survive that
+  // phase transition or they get cancelled before they can play.
+  const revealTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const revealFiredForRound = useRef<number>(-1);
 
   const {
     round,
@@ -120,14 +130,46 @@ function App() {
     }
   }, [started, phase, dispatch]);
 
-  // [BLOCK: Auto-resolve once AI has placed]
+  // [BLOCK: Reveal Sequence]
+  // Fires when phase enters 'reveal' (after AI cards are placed).
+  // 1. Guard: only run once per round (ref prevents double-fire in StrictMode
+  //    and after phase→resolution re-render).
+  // 2. Dispatch REVEAL_ROUND immediately so reducer has final outcomes on slots.
+  // 3. Start visual timer chain independently — NO cleanup return here so these
+  //    timers aren't cancelled when phase changes to 'resolution' mid-sequence.
   useEffect(() => {
-    if (started && phase === 'reveal') {
-      dispatch({ type: 'REVEAL_ROUND' });
-    }
-  }, [started, phase, dispatch]);
+    if (!started || phase !== 'reveal') return;
+    if (revealFiredForRound.current === round) return; // already running
+    revealFiredForRound.current = round;
 
-  // [BLOCK: Clear card selection whenever placement phase ends]
+    // Resolve game state now (outcomes available for slotVisuals to read)
+    dispatch({ type: 'REVEAL_ROUND' });
+
+    // Start visual sequence
+    setRevealStep('flipping');
+
+    const t1 = setTimeout(() => setRevealStep('left'),
+      FLIP_TO_LEFT_MS);
+    const t2 = setTimeout(() => setRevealStep('center'),
+      FLIP_TO_LEFT_MS + LEFT_TO_CENTER_MS);
+    const t3 = setTimeout(() => setRevealStep('right'),
+      FLIP_TO_LEFT_MS + LEFT_TO_CENTER_MS + CENTER_TO_RIGHT_MS);
+    const t4 = setTimeout(() => setRevealStep('done'),
+      FLIP_TO_LEFT_MS + LEFT_TO_CENTER_MS + CENTER_TO_RIGHT_MS + RIGHT_TO_DONE_MS);
+
+    revealTimers.current = [t1, t2, t3, t4];
+
+    // intentionally no cleanup return — timers must survive the
+    // reveal → resolution phase transition or they'll be cancelled
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [started, phase, round]);
+
+  // [BLOCK: Reset reveal step when a new round's placement begins]
+  useEffect(() => {
+    if (phase === 'placement') setRevealStep(null);
+  }, [phase]);
+
+  // [BLOCK: Clear card selection when leaving placement]
   useEffect(() => {
     if (phase !== 'placement') setSelectedCardId(null);
   }, [phase]);
@@ -137,41 +179,38 @@ function App() {
     phase === 'placement' &&
     SLOT_KEYS.every((k) => playerSlots[k].card !== null);
 
-  const canAdvance = phase === 'resolution';
-  const canShuffle = phase !== 'reveal' && phase !== 'gameover';
+  // Play only re-enables once the full visual sequence has finished
+  const canAdvance = phase === 'resolution' && revealStep === 'done';
+  const canShuffle = phase !== 'reveal' && phase !== 'gameover' && revealStep === null;
   const placementActive = phase === 'placement';
 
   const selectedCard = playerHand.find((c) => c.id === selectedCardId) ?? null;
 
   // [BLOCK: Handlers]
-  function handleStartGame() {
-    setStarted(true);
-  }
+  function handleStartGame() { setStarted(true); }
 
   function handleBackToMenu() {
+    revealTimers.current.forEach(clearTimeout);
+    revealTimers.current = [];
+    revealFiredForRound.current = -1;
     dispatch({ type: 'RESTART' });
     setSelectedCardId(null);
+    setRevealStep(null);
     setStarted(false);
   }
 
-  // Selecting/deselecting a card from hand
   function handleCardClick(card: CardType) {
     if (phase !== 'placement') return;
     setSelectedCardId((prev) => (prev === card.id ? null : card.id));
   }
 
-  // Clicking a battlefield player slot — places the selected card, or
-  // removes whatever's already there. This is the merged placement target
-  // that used to be a separate row under Hand.
   function handleSlotClick(slotKey: SlotKey) {
     if (phase !== 'placement') return;
     const slot = playerSlots[slotKey];
-
     if (slot.card) {
       dispatch({ type: 'REMOVE_CARD', slotKey });
       return;
     }
-
     if (selectedCard) {
       dispatch({ type: 'PLACE_CARD', slotKey, card: selectedCard });
       setSelectedCardId(null);
@@ -246,7 +285,7 @@ function App() {
                 playerSlots={playerSlots}
                 aiSlots={aiSlots}
                 aiHand={aiHand}
-                revealingSlot={null}
+                revealStep={revealStep}
                 selectedCardId={selectedCardId}
                 onSlotClick={handleSlotClick}
                 placementActive={placementActive}

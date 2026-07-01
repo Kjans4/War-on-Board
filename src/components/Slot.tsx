@@ -8,9 +8,14 @@ import clsx from 'clsx';
 interface SlotProps {
   slot: SlotType;
   owner: 'player' | 'ai';
-  isRevealing?: boolean;   // true during the reveal animation beat
-  onClick?: () => void;    // placement/removal target — player slots only
-  clickable?: boolean;     // true when this slot is a valid click target right now
+  onClick?: () => void;
+  clickable?: boolean;
+  // [Animation control]
+  // These two decouple what's visually shown from what game state says —
+  // needed for the staggered reveal sequence where state already has the
+  // final outcome but each slot flips up one at a time.
+  visuallyFaceDown?: boolean; // overrides the default face-down inference
+  showOutcome?: boolean;      // gates the outcome badge + glow separately
 }
 
 // [BLOCK: Outcome Config]
@@ -22,23 +27,35 @@ const OUTCOME_CONFIG: Partial<Record<SlotType['state'], { label: string; classNa
 };
 
 // [BLOCK: Component]
-// Phase 4 layout redesign: this is now also the placement/removal target —
-// the old standalone Hand slot-target row has been folded into here.
-// Clicking an empty player slot with a card selected places it; clicking a
-// placed player slot (still in 'placement' phase) removes it back to hand.
-export function Slot({ slot, owner, isRevealing = false, onClick, clickable = false }: SlotProps) {
+export function Slot({
+  slot,
+  owner,
+  onClick,
+  clickable = false,
+  visuallyFaceDown,
+  showOutcome,
+}: SlotProps) {
   const outcome = OUTCOME_CONFIG[slot.state];
-  const isFaceDown = slot.state === 'placed';
   const isEmpty = slot.state === 'empty';
   const interactive = clickable && !!onClick;
+
+  // Default face-down logic: only when card is 'placed' (pre-reveal).
+  // During placement phase we intentionally do NOT face cards down —
+  // the player should see what they placed until they click Play.
+  const isFaceDown = visuallyFaceDown !== undefined
+    ? visuallyFaceDown
+    : false; // placement-phase cards are always face-up; reveal animation drives face-down
+
+  // Outcome glow/badge shows only when explicitly enabled (i.e. after
+  // the reveal animation reaches this slot) or after resolution is complete.
+  const displayOutcome = showOutcome ? outcome : undefined;
 
   return (
     <div
       className={clsx(
         'slot',
         `slot--${owner}`,
-        outcome?.className,
-        isRevealing && 'slot--revealing',
+        displayOutcome?.className,
         isEmpty && 'slot--empty',
         interactive && 'slot--clickable',
       )}
@@ -46,7 +63,7 @@ export function Slot({ slot, owner, isRevealing = false, onClick, clickable = fa
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
       onKeyDown={interactive ? (e) => e.key === 'Enter' && onClick?.() : undefined}
-      aria-label={`${owner} ${slot.key} slot${outcome ? `: ${outcome.label}` : isEmpty ? ' (empty)' : ''}`}
+      aria-label={`${owner} ${slot.key} slot${displayOutcome ? `: ${displayOutcome.label}` : isEmpty ? ' (empty)' : ''}`}
     >
       {slot.card ? (
         <Card card={slot.card} faceDown={isFaceDown} />
@@ -56,8 +73,8 @@ export function Slot({ slot, owner, isRevealing = false, onClick, clickable = fa
         </div>
       )}
 
-      {outcome && (
-        <span className="slot__outcome-badge">{outcome.label}</span>
+      {displayOutcome && (
+        <span className="slot__outcome-badge">{displayOutcome.label}</span>
       )}
     </div>
   );
@@ -111,11 +128,6 @@ export const slotStyles = `
   }
   .slot--clickable:hover .slot__hint {
     color: #f0c040;
-  }
-
-  .slot--revealing {
-    box-shadow: 0 0 20px rgba(240,192,64,0.4);
-    border-color: #f0c040;
   }
 
   .slot--won       { border-color: #52c87a; box-shadow: 0 0 12px rgba(82,200,122,0.3); }
