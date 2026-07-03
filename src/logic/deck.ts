@@ -1,15 +1,16 @@
 // src/logic/deck.ts
 
-import type { Card, CardType, Owner } from '../types/game';
+import type { Card, RPSType, Owner } from '../types/game';
 import { CARDS_PER_TYPE } from '../types/game';
 
 // [BLOCK: Deck Creation]
-const CARD_TYPES: CardType[] = ['Sword', 'Arrow', 'Shield'];
+const RPS_CARD_TYPES: RPSType[] = ['Sword', 'Arrow', 'Shield'];
 
+// 22 cards per deck: 7 Sword, 7 Arrow, 7 Shield, 1 Dragon.
 export function createDeck(owner: Owner): Card[] {
   const cards: Card[] = [];
 
-  for (const type of CARD_TYPES) {
+  for (const type of RPS_CARD_TYPES) {
     for (let i = 1; i <= CARDS_PER_TYPE; i++) {
       cards.push({
         id: `${owner}-${type.toLowerCase()}-${i}`,
@@ -19,6 +20,17 @@ export function createDeck(owner: Owner): Card[] {
       });
     }
   }
+
+  // [SUB-BLOCK: Dragon]
+  // 1 per deck. Never exhausted — resolved via the whole-round override in
+  // combat.ts, not the per-slot RPS/exhausted path, so it never reaches the
+  // code that would flip this flag.
+  cards.push({
+    id: `${owner}-dragon-1`,
+    type: 'Dragon',
+    exhausted: false,
+    owner,
+  });
 
   return cards;
 }
@@ -38,9 +50,9 @@ export function createShuffledDeck(owner: Owner): Card[] {
 }
 
 // [BLOCK: Draw Logic]
-// Draws cards from the top of the stack until hand reaches HAND_SIZE (5).
-// If stack has fewer cards than needed, draws all remaining — hand may be < 5.
-// Returns updated hand and stack; does not mutate originals.
+// Draws cards from the top of the stack until hand reaches handSize.
+// If stack has fewer cards than needed, draws all remaining — hand may be
+// smaller than handSize. Returns updated hand and stack; does not mutate originals.
 export function drawToFill(
   hand: Card[],
   stack: Card[],

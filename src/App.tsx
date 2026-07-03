@@ -16,13 +16,8 @@ import { SLOT_KEYS } from './types/game';
 
 // [BLOCK: Combined Component Styles]
 const combinedStyles = [
-  cardStyles,
-  slotStyles,
-  boardStyles,
-  handStyles,
-  hudStyles,
-  roundHistoryStyles,
-  mainMenuStyles,
+  cardStyles, slotStyles, boardStyles, handStyles,
+  hudStyles, roundHistoryStyles, mainMenuStyles,
 ].join('\n');
 
 // [BLOCK: App Shell Styles]
@@ -88,11 +83,23 @@ const appStyles = `
   }
 `;
 
-// [BLOCK: Reveal Sequence Timings (ms)]
-const FLIP_TO_LEFT_MS    = 2000; // suspense after flip before Left reveals
-const LEFT_TO_CENTER_MS  = 1500; // gap between Left and Center
-const CENTER_TO_RIGHT_MS = 1500; // gap between Center and Right
-const RIGHT_TO_DONE_MS   = 800;  // brief hold after Right before Play lights up
+// [BLOCK: Reveal + Auto-Transition Timings (ms)]
+// Full sequence after clicking Play:
+//   0ms     → flip all cards face-down (revealStep: 'flipping')
+//   +2000   → left slot reveals
+//   +3500   → center slot reveals
+//   +5000   → right slot reveals
+//   +5800   → revealStep: 'done'
+//   +6300   → RECORD_HISTORY dispatched (history panel updates)
+//   +7800   → NEXT_ROUND dispatched (board clears, next round begins)
+const FLIP_TO_LEFT_MS    = 2000;
+const LEFT_TO_CENTER_MS  = 1500;
+const CENTER_TO_RIGHT_MS = 1500;
+const RIGHT_TO_DONE_MS   = 800;
+const DONE_TO_HISTORY_MS = 500;
+const HISTORY_TO_NEXT_MS = 1500;
+
+const AFTER_DONE = FLIP_TO_LEFT_MS + LEFT_TO_CENTER_MS + CENTER_TO_RIGHT_MS + RIGHT_TO_DONE_MS;
 
 function App() {
   const [started, setStarted] = useState(false);
@@ -100,71 +107,62 @@ function App() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [revealStep, setRevealStep] = useState<RevealStep>(null);
 
-  // [BLOCK: Reveal Refs]
-  // revealTimers: timer IDs so handleBackToMenu can clear them on hard exit.
-  // revealFiredForRound: guards against double-firing the reveal effect when
-  // React re-runs it after REVEAL_ROUND changes phase reveal→resolution.
-  // The effect intentionally has NO cleanup return — timers must survive that
-  // phase transition or they get cancelled before they can play.
-  const revealTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // [BLOCK: Timer Refs]
+  // allTimers: every active timer ID — cleared on back-to-menu or skip
+  // revealFiredForRound: guards against double-firing the reveal effect
+  // historyRecordedForRound: guards against double-dispatching RECORD_HISTORY
+  //   if the auto-transition t5 already fired before the player hits Skip
+  const allTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const revealFiredForRound = useRef<number>(-1);
+  const historyRecordedForRound = useRef<number>(-1);
 
   const {
-    round,
-    phase,
-    playerStack,
-    playerHand,
-    playerSlots,
-    aiStack,
-    aiHand,
-    aiSlots,
-    ai,
-    result,
-    roundHistory,
+    round, phase,
+    playerStack, playerHand, playerSlots,
+    aiStack, aiHand, aiSlots,
+    ai, result, roundHistory,
   } = state;
 
   // [BLOCK: Auto-draw at round start]
   useEffect(() => {
-    if (started && phase === 'draw') {
-      dispatch({ type: 'DRAW_CARDS' });
-    }
+    if (started && phase === 'draw') dispatch({ type: 'DRAW_CARDS' });
   }, [started, phase, dispatch]);
 
-  // [BLOCK: Reveal Sequence]
-  // Fires when phase enters 'reveal' (after AI cards are placed).
-  // 1. Guard: only run once per round (ref prevents double-fire in StrictMode
-  //    and after phase→resolution re-render).
-  // 2. Dispatch REVEAL_ROUND immediately so reducer has final outcomes on slots.
-  // 3. Start visual timer chain independently — NO cleanup return here so these
-  //    timers aren't cancelled when phase changes to 'resolution' mid-sequence.
+  // [BLOCK: Reveal + Auto-Transition Sequence]
+  // Fires once per round when phase enters 'reveal'.
+  // REVEAL_ROUND dispatched immediately (resolves game state, phase → resolution).
+  // Visual timer chain runs independently — no cleanup return so timers survive
+  // the reveal→resolution phase transition.
   useEffect(() => {
     if (!started || phase !== 'reveal') return;
-    if (revealFiredForRound.current === round) return; // already running
+    if (revealFiredForRound.current === round) return;
     revealFiredForRound.current = round;
 
-    // Resolve game state now (outcomes available for slotVisuals to read)
     dispatch({ type: 'REVEAL_ROUND' });
-
-    // Start visual sequence
     setRevealStep('flipping');
 
-    const t1 = setTimeout(() => setRevealStep('left'),
-      FLIP_TO_LEFT_MS);
-    const t2 = setTimeout(() => setRevealStep('center'),
-      FLIP_TO_LEFT_MS + LEFT_TO_CENTER_MS);
-    const t3 = setTimeout(() => setRevealStep('right'),
-      FLIP_TO_LEFT_MS + LEFT_TO_CENTER_MS + CENTER_TO_RIGHT_MS);
-    const t4 = setTimeout(() => setRevealStep('done'),
-      FLIP_TO_LEFT_MS + LEFT_TO_CENTER_MS + CENTER_TO_RIGHT_MS + RIGHT_TO_DONE_MS);
+    const t1 = setTimeout(() => setRevealStep('left'),   FLIP_TO_LEFT_MS);
+    const t2 = setTimeout(() => setRevealStep('center'), FLIP_TO_LEFT_MS + LEFT_TO_CENTER_MS);
+    const t3 = setTimeout(() => setRevealStep('right'),  FLIP_TO_LEFT_MS + LEFT_TO_CENTER_MS + CENTER_TO_RIGHT_MS);
+    const t4 = setTimeout(() => setRevealStep('done'),   AFTER_DONE);
 
-    revealTimers.current = [t1, t2, t3, t4];
+    const t5 = setTimeout(() => {
+      historyRecordedForRound.current = round;
+      dispatch({ type: 'RECORD_HISTORY' });
+    }, AFTER_DONE + DONE_TO_HISTORY_MS);
 
-    // intentionally no cleanup return — timers must survive the
-    // reveal → resolution phase transition or they'll be cancelled
+    const t6 = setTimeout(() => {
+      dispatch({ type: 'NEXT_ROUND' });
+      setRevealStep(null);
+    }, AFTER_DONE + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS);
+
+    allTimers.current = [t1, t2, t3, t4, t5, t6];
+
+    // intentionally no cleanup return — timers must survive reveal→resolution
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started, phase, round]);
 
-  // [BLOCK: Reset reveal step when a new round's placement begins]
+  // [BLOCK: Reset reveal step when new round placement begins]
   useEffect(() => {
     if (phase === 'placement') setRevealStep(null);
   }, [phase]);
@@ -179,20 +177,24 @@ function App() {
     phase === 'placement' &&
     SLOT_KEYS.every((k) => playerSlots[k].card !== null);
 
-  // Play only re-enables once the full visual sequence has finished
-  const canAdvance = phase === 'resolution' && revealStep === 'done';
+  // canSkip: true for the entire reveal + auto-transition window.
+  // Phase is already 'resolution' by the time revealStep is set (REVEAL_ROUND
+  // fires immediately), so this covers flipping → left → center → right → done
+  // → post-done transition, all the way until NEXT_ROUND fires.
+  const canSkip = revealStep !== null && phase === 'resolution';
+
   const canShuffle = phase !== 'reveal' && phase !== 'gameover' && revealStep === null;
   const placementActive = phase === 'placement';
-
   const selectedCard = playerHand.find((c) => c.id === selectedCardId) ?? null;
 
   // [BLOCK: Handlers]
   function handleStartGame() { setStarted(true); }
 
   function handleBackToMenu() {
-    revealTimers.current.forEach(clearTimeout);
-    revealTimers.current = [];
+    allTimers.current.forEach(clearTimeout);
+    allTimers.current = [];
     revealFiredForRound.current = -1;
+    historyRecordedForRound.current = -1;
     dispatch({ type: 'RESTART' });
     setSelectedCardId(null);
     setRevealStep(null);
@@ -223,8 +225,20 @@ function App() {
     dispatch({ type: 'PLACE_AI_CARDS', placements });
   }
 
-  function handleNextRound() {
+  // [BLOCK: Skip Handler]
+  // Cancels all pending timers and immediately fires RECORD_HISTORY (if not
+  // already dispatched for this round by t5) + NEXT_ROUND, fast-forwarding
+  // through whatever part of the reveal/transition sequence was still running.
+  function handleSkip() {
+    if (!canSkip) return;
+    allTimers.current.forEach(clearTimeout);
+    allTimers.current = [];
+    if (historyRecordedForRound.current !== round) {
+      historyRecordedForRound.current = round;
+      dispatch({ type: 'RECORD_HISTORY' });
+    }
     dispatch({ type: 'NEXT_ROUND' });
+    setRevealStep(null);
   }
 
   function handleShuffleStack() {
@@ -261,10 +275,10 @@ function App() {
           <PlayFooter
             phase={phase}
             onConfirmPlacement={handleConfirmPlacement}
-            onNextRound={handleNextRound}
+            onSkip={handleSkip}
             onBackToMenu={handleBackToMenu}
             canConfirm={canConfirm}
-            canAdvance={canAdvance}
+            canSkip={canSkip}
           />
         </div>
 
@@ -275,8 +289,8 @@ function App() {
               <h2>Game Over</h2>
               <p>
                 {result === 'player' && 'You win!'}
-                {result === 'ai' && 'The opponent wins.'}
-                {result === 'draw' && "It's a draw."}
+                {result === 'ai'     && 'The opponent wins.'}
+                {result === 'draw'   && "It's a draw."}
               </p>
             </div>
           ) : (

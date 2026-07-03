@@ -3,6 +3,7 @@
 import { useReducer } from 'react';
 import type {
   GameState,
+  GamePhase,
   Card,
   SlotKey,
   BoardSlots,
@@ -70,6 +71,13 @@ export type GameAction =
 // [BLOCK: Validation Helpers]
 function allSlotsPlaced(slots: BoardSlots): boolean {
   return SLOT_KEYS.every((k) => slots[k].card !== null);
+}
+
+function countCards(state: GameState, owner: 'player' | 'ai'): number {
+  if (owner === 'player') {
+    return state.playerStack.length + state.playerHand.length;
+  }
+  return state.aiStack.length + state.aiHand.length;
 }
 
 // [BLOCK: Reducer]
@@ -183,27 +191,56 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         aiSlots[key] = { ...aiSlots[key], state: ai };
       }
 
-      // Update Smart AI pattern tracking
+      // Build round history entry
+      const historyEntry: RoundHistoryEntry = {
+        round: state.round,
+        playerSlots: {
+          left:   state.playerSlots.left.card!.type,
+          center: state.playerSlots.center.card!.type,
+          right:  state.playerSlots.right.card!.type,
+        },
+        aiSlots: {
+          left:   state.aiSlots.left.card!.type,
+          center: state.aiSlots.center.card!.type,
+          right:  state.aiSlots.right.card!.type,
+        },
+        resolutions: {
+          left:   { player: resolution.left.player,   ai: resolution.left.ai },
+          center: { player: resolution.center.player, ai: resolution.center.ai },
+          right:  { player: resolution.right.player,  ai: resolution.right.ai },
+        },
+        playerCardsAfter: countCards(state, 'player'),
+        aiCardsAfter: countCards(state, 'ai'),
+      };
+
+      // Update Smart AI pattern tracking — Dragon plays are excluded
+      // (ai-behavior.md defines no pattern behavior for it; patternHistory
+      // is typed to RPS types only, see types/game.ts).
       const patternHistory = { ...state.ai.patternHistory };
       if (state.ai.difficulty === 'smart' && !state.ai.confidenceDisrupted) {
         for (const key of SLOT_KEYS) {
-          patternHistory[key] = [
-            ...patternHistory[key],
-            state.playerSlots[key].card!.type,
-          ];
+          const playedType = state.playerSlots[key].card!.type;
+          if (playedType !== 'Dragon') {
+            patternHistory[key] = [...patternHistory[key], playedType];
+          }
         }
       }
 
-      // Update cards seen by AI
+      // Update cards seen by AI — Dragon excluded (single-use, untracked;
+      // see ai-behavior.md and ai.ts).
       const playerCardsSeen = { ...state.ai.playerCardsSeen };
       for (const key of SLOT_KEYS) {
-        playerCardsSeen[state.playerSlots[key].card!.type]++;
+        const playedType = state.playerSlots[key].card!.type;
+        if (playedType !== 'Dragon') {
+          playerCardsSeen[playedType]++;
+        }
       }
 
       return {
         ...state,
         playerSlots,
         aiSlots,
+        roundHistory: [...state.roundHistory, historyEntry],
         ai: {
           ...state.ai,
           patternHistory,
@@ -235,34 +272,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         result = playerScore > aiScore ? 'player' : aiScore > playerScore ? 'ai' : 'draw';
       }
 
-      // [BLOCK: History Entry]
-      // Recorded here (not in REVEAL_ROUND) so the round history panel only
-      // updates after the full reveal animation has played and the player has
-      // clicked Play to advance — prevents the history from spoiling outcomes
-      // before cards are visually revealed on the battlefield.
-      // Card counts use post-cycling stack lengths so they reflect what the
-      // next round actually starts with.
-      const historyEntry: RoundHistoryEntry = {
-        round: state.round,
-        playerSlots: {
-          left:   state.playerSlots.left.card!.type,
-          center: state.playerSlots.center.card!.type,
-          right:  state.playerSlots.right.card!.type,
-        },
-        aiSlots: {
-          left:   state.aiSlots.left.card!.type,
-          center: state.aiSlots.center.card!.type,
-          right:  state.aiSlots.right.card!.type,
-        },
-        resolutions: {
-          left:   { player: resolution.left.player,   ai: resolution.left.ai },
-          center: { player: resolution.center.player, ai: resolution.center.ai },
-          right:  { player: resolution.right.player,  ai: resolution.right.ai },
-        },
-        playerCardsAfter: playerStack.length + state.playerHand.length,
-        aiCardsAfter: aiStack.length + state.aiHand.length,
-      };
-
       return {
         ...state,
         round: nextRound,
@@ -273,7 +282,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         aiStack,
         aiHand: state.aiHand,
         aiSlots: makeEmptySlots(),
-        roundHistory: [...state.roundHistory, historyEntry],
         result,
       };
     }
