@@ -7,6 +7,11 @@ import type {
   RoundResolution,
   BoardSlots,
   SlotKey,
+  Owner,
+  CombatOutcome,
+  CascadeResult,
+  CascadeCardRef,
+  CascadeFightLog,
 } from '../types/game';
 import { SLOT_KEYS } from '../types/game';
 
@@ -43,6 +48,10 @@ function findDragonSlot(slots: BoardSlots): SlotKey | null {
 // slots untouched by a Dragon play (see below). Handles all exhausted tie
 // cases per card-systems.md. Mutates the exhausted flag on cards when a
 // fresh same-type tie occurs.
+//
+// Also reused directly by resolveCascade() below for cascade fights —
+// cascade combat runs through the exact same RPS + exhausted rules as
+// normal lane resolution, per design discussion.
 export function resolveSlot(playerCard: Card, aiCard: Card): SlotResolution {
   if (playerCard.type === aiCard.type) {
     if (playerCard.exhausted && aiCard.exhausted) {
@@ -164,6 +173,11 @@ export function resolveRound(
 // tied → returns to stack (exhausted flag already set in resolveSlot)
 // lost / tied-lost → discarded (not returned) — this is also how a played
 // Dragon permanently leaves the game; no separate "used" flag required.
+//
+// NOTE: this reflects the raw per-lane resolution only. Cascade overrides
+// (see resolveCascade below) are applied on top of this by the caller
+// (useGameState.ts's NEXT_ROUND) — a card counted as a survivor here may
+// still be discarded if the cascade flipped its lane's outcome to 'lost'.
 export function getSurvivors(resolution: RoundResolution): {
   playerSurvivors: Card[];
   aiSurvivors: Card[];
@@ -179,4 +193,180 @@ export function getSurvivors(resolution: RoundResolution): {
   }
 
   return { playerSurvivors, aiSurvivors };
+}
+
+// [BLOCK: Cascade Combat — new mechanic]
+// After normal per-lane resolution, whichever card WON its lane (from
+// either side) enters a sequential elimination fight, Left -> Center ->
+// Right. Tied/tied-lost lanes withdraw and never enter the cascade.
+//
+// Algorithm: walk the ordered list of lane-winners. The first winner
+// becomes the "champion" with no fight. Each subsequent winner either:
+//   - belongs to the SAME owner as the current champion -> no fight, it's
+//     queued as a reserve (their side already "holds" this position);
+//   - belongs to the OTHER owner -> fights the champion via resolveSlot
+//     (same RPS + exhausted rules as lane resolution).
+// On a champion loss, the new champion (the winner of that fight)
+// immediately has to fight through any queued reserves of the fallen
+// champion's owner, in the order they were queued — this is what produces
+// "if the opponent wins, it fights the last winning card of the player"
+// when there's more than one card on the losing side still in reserve.
+// A tie inside the cascade halts the entire chain immediately — no further
+// fights occur, and any not-yet-fought reserves simply stand as survivors.
+
+interface CascadeEntry {
+  slotKey: SlotKey;
+  owner: Owner;
+  card: Card;
+}
+
+// Collects lane-winners in Left -> Center -> Right order. Ties/tied-lost
+// lanes are excluded entirely (they withdraw from the cascade).
+function collectWonEntries(resolution: RoundResolution): CascadeEntry[] {
+  const entries: CascadeEntry[] = [];
+  for (const key of SLOT_KEYS) {
+    const { player, ai, playerCard, aiCard } = resolution[key];
+    if (player === 'won') entries.push({ slotKey: key, owner: 'player', card: playerCard });
+    else if (ai === 'won') entries.push({ slotKey: key, owner: 'ai', card: aiCard });
+  }
+  return entries;
+}
+
+// Runs a single cascade fight between two entries via the same
+// resolveSlot() used for lane resolution — mutates exhausted flags exactly
+// like a normal matchup would.
+function runCascadeFight(
+  a: CascadeEntry,
+  b: CascadeEntry
+): { aOutcome: CombatOutcome; bOutcome: CombatOutcome } {
+  const playerEntry = a.owner === 'player' ? a : b;
+  const aiEntry = a.owner === 'player' ? b : a;
+  const result = resolveSlot(playerEntry.card, aiEntry.card);
+  const aOutcome = a.owner === 'player' ? result.player : result.ai;
+  const bOutcome = b.owner === 'player' ? result.player : result.ai;
+  return { aOutcome, bOutcome };
+}
+
+function refOf(entry: CascadeEntry): CascadeCardRef {
+  return { slotKey: entry.slotKey, owner: entry.owner };
+}
+
+// Detects whether a Dragon was played this round at all — if so, the whole
+// round was already resolved via the Dragon override in resolveRound(), so
+// there's no meaningful per-lane "winner" to run a cascade over.
+export function roundHasDragon(resolution: RoundResolution): boolean {
+  return SLOT_KEYS.some(
+    (key) =>
+      resolution[key].playerCard.type === 'Dragon' ||
+      resolution[key].aiCard.type === 'Dragon'
+  );
+}
+
+export function resolveCascade(resolution: RoundResolution, dragonPlayed: boolean): CascadeResult {
+  const entries = dragonPlayed ? [] : collectWonEntries(resolution);
+
+  // 0 or 1 lane-winners: nothing to fight. The single winner (if any)
+  // stands by default with no cascade fight required.
+  if (entries.length <= 1) {
+    return {
+      triggered: false,
+      overrides: [],
+      survivingSlots: entries.map(refOf),
+      log: [],
+    };
+  }
+
+  const overrides: CascadeCardRef[] = [];
+  const log: CascadeFightLog[] = [];
+
+  const queue = [...entries];
+  let champion = queue.shift()!;
+  const reserves: CascadeEntry[] = [];
+  let halted = false;
+
+  function fight(champ: CascadeEntry, challenger: CascadeEntry) {
+    const { aOutcome, bOutcome } = runCascadeFight(champ, challenger);
+    const outcome =
+      aOutcome === 'tied' ? 'tied' :
+      aOutcome === 'tied-lost' ? 'tiedLost' :
+      aOutcome === 'won' ? 'championWon' : 'challengerWon';
+
+    log.push({
+      championSlot: champ.slotKey,
+      championOwner: champ.owner,
+      challengerSlot: challenger.slotKey,
+      challengerOwner: challenger.owner,
+      outcome,
+    });
+
+    return { champOutcome: aOutcome, challOutcome: bOutcome };
+  }
+
+  while (queue.length > 0 && !halted) {
+    const next = queue.shift()!;
+
+    if (next.owner === champion.owner) {
+      // Same side — no fight, just reinforces this owner's hold. Queued in
+      // case the champion later falls to the other side.
+      reserves.push(next);
+      continue;
+    }
+
+    const { champOutcome, challOutcome } = fight(champion, next);
+
+    if (champOutcome === 'tied' || champOutcome === 'tied-lost') {
+      halted = true;
+      if (champOutcome === 'tied-lost') overrides.push(refOf(champion));
+      if (challOutcome === 'tied-lost') overrides.push(refOf(next));
+      break;
+    }
+
+    if (champOutcome === 'won') {
+      overrides.push(refOf(next));
+      // champion persists, reserves stay queued, untouched
+    } else {
+      // champion falls — the challenger becomes the new champion and must
+      // immediately fight through any reserves the fallen champion's side
+      // had queued up, in the order they were queued.
+      overrides.push(refOf(champion));
+      champion = next;
+
+      while (reserves.length > 0 && !halted) {
+        const reserve = reserves.shift()!;
+        const r = fight(champion, reserve);
+
+        if (r.champOutcome === 'tied' || r.champOutcome === 'tied-lost') {
+          halted = true;
+          if (r.champOutcome === 'tied-lost') overrides.push(refOf(champion));
+          if (r.challOutcome === 'tied-lost') overrides.push(refOf(reserve));
+          break;
+        }
+
+        if (r.champOutcome === 'won') {
+          overrides.push(refOf(reserve));
+        } else {
+          overrides.push(refOf(champion));
+          champion = reserve;
+        }
+      }
+    }
+  }
+
+  const overriddenKeys = new Set(overrides.map((o) => `${o.slotKey}-${o.owner}`));
+  const survivingSlots = entries
+    .filter((e) => !overriddenKeys.has(`${e.slotKey}-${e.owner}`))
+    .map(refOf);
+
+  return { triggered: true, overrides, survivingSlots, log };
+}
+
+// Derives a round-winner label purely from the cascade's final standing
+// cards — used for round history display. 'draw' means a cascade tie
+// halted the chain with cards from both sides still standing; null means
+// nothing won a lane at all (e.g. a round of pure ties, or a Dragon round).
+export function getCascadeRoundWinner(cascade: CascadeResult): Owner | 'draw' | null {
+  const owners = new Set(cascade.survivingSlots.map((s) => s.owner));
+  if (owners.size === 0) return null;
+  if (owners.size === 1) return [...owners][0];
+  return 'draw';
 }

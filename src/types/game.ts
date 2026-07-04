@@ -26,10 +26,14 @@ export type SlotState =
   | 'empty'      // no card placed yet
   | 'placed'     // card placed face-down, awaiting reveal
   | 'revealed'   // card flipped face-up during resolution
-  | 'won'        // card survived this round
-  | 'lost'       // card discarded after resolution
-  | 'tied'       // same-type fresh tie — card exhausted, survived
-  | 'tied-lost'; // exhausted vs exhausted — both discarded
+  | 'won'        // card survived this round's lane resolution
+  | 'lost'       // card discarded — either lost its lane outright, or won
+                  // its lane but was later discarded by a cascade fight
+                  // (see CascadeResult in combat.ts)
+  | 'tied'       // same-type fresh tie — card exhausted, survived, withdraws
+                  // from the cascade entirely
+  | 'tied-lost'; // exhausted vs exhausted — both discarded, withdraws from
+                  // the cascade entirely
 
 export interface Slot {
   key: SlotKey;
@@ -53,6 +57,48 @@ export interface RoundResolution {
   left: SlotResolution;
   center: SlotResolution;
   right: SlotResolution;
+}
+
+// [BLOCK: Cascade Combat]
+// New mechanic: after normal per-lane resolution, whichever card WON its
+// lane (from either side) enters a sequential elimination fight, in
+// Left -> Center -> Right order. Tied/tied-lost lanes withdraw and never
+// enter the cascade. See combat.ts's resolveCascade() for the algorithm.
+export type CascadeFightOutcome =
+  | 'championWon'    // the standing champion beat the challenger
+  | 'challengerWon'  // the challenger beat the champion (champion falls)
+  | 'tied'           // fresh vs fresh in the cascade fight — chain halts
+  | 'tiedLost';       // exhausted vs exhausted in the cascade fight — both
+                       // discarded, chain halts
+
+export interface CascadeFightLog {
+  championSlot: SlotKey;
+  championOwner: Owner;
+  challengerSlot: SlotKey;
+  challengerOwner: Owner;
+  outcome: CascadeFightOutcome;
+}
+
+// A single (slotKey, owner) reference — used both for cards that were
+// overridden to 'lost' by the cascade, and for cards left standing at the
+// end of it.
+export interface CascadeCardRef {
+  slotKey: SlotKey;
+  owner: Owner;
+}
+
+export interface CascadeResult {
+  // false when the cascade never had more than one lane-winner to compare
+  // (0 or 1 "won" lanes, or a Dragon round) — no fights occurred, though a
+  // single winner may still stand by default.
+  triggered: boolean;
+  // Cards that won their own lane but were discarded by a cascade fight —
+  // consumers must flip these from 'won' to 'lost' for slot state, scoring,
+  // and survivor cycling.
+  overrides: CascadeCardRef[];
+  // Card(s) left standing once the cascade finishes (or halts on a tie).
+  survivingSlots: CascadeCardRef[];
+  log: CascadeFightLog[];
 }
 
 // [BLOCK: AI]
@@ -80,6 +126,17 @@ export interface RoundHistoryEntry {
   resolutions: Record<SlotKey, { player: CombatOutcome; ai: CombatOutcome }>;
   playerCardsAfter: number; // stack + hand count after round
   aiCardsAfter: number;
+  // null only when no cascade result exists at all (shouldn't normally
+  // happen post-REVEAL_ROUND, but kept nullable defensively).
+  cascade: {
+    triggered: boolean;
+    log: CascadeFightLog[];
+    survivingSlots: CascadeCardRef[];
+    // 'draw' when a cascade tie halts the chain with cards from both
+    // sides still standing; null when nothing won a lane at all (e.g. a
+    // round of pure ties, or a Dragon round).
+    roundWinner: Owner | 'draw' | null;
+  } | null;
 }
 
 // [BLOCK: Game Phase]
@@ -92,7 +149,7 @@ export type GamePhase =
 
 // [BLOCK: Game State]
 export interface GameState {
-  round: number;          // 1–7
+  round: number;          // 1–9
   phase: GamePhase;
 
   // Player
@@ -111,16 +168,17 @@ export interface GameState {
   // History
   roundHistory: RoundHistoryEntry[];
 
-  // [BLOCK: Pending Resolution]
-  // Set once by REVEAL_ROUND (the single call to resolveRound() for a given
-  // round) and read by both RECORD_HISTORY (to build the history entry) and
-  // NEXT_ROUND (to compute survivors). This exists because resolveSlot()
-  // mutates card.exhausted in place on a fresh same-type tie — calling
-  // resolveRound() a second time on the same card objects (as NEXT_ROUND
-  // used to do) would re-evaluate an already-exhausted pair as an
-  // exhausted-vs-exhausted tie-lost, silently discarding cards that should
-  // have survived. Cleared back to null once NEXT_ROUND consumes it.
+  // [BLOCK: Pending Resolution / Cascade]
+  // Both set once by REVEAL_ROUND (the single call to resolveRound() and
+  // resolveCascade() for a given round) and read by both RECORD_HISTORY
+  // (to build the history entry) and NEXT_ROUND (to compute survivors).
+  // This exists because resolveSlot() mutates card.exhausted in place on a
+  // fresh same-type tie — calling resolveRound() or resolveCascade() a
+  // second time on the same card objects would re-evaluate an
+  // already-exhausted pair incorrectly. Both are cleared back to null once
+  // NEXT_ROUND consumes them.
   pendingResolution: RoundResolution | null;
+  pendingCascade: CascadeResult | null;
 
   // Result — only set when phase is 'gameover'
   result: 'player' | 'ai' | 'draw' | null;
@@ -129,8 +187,8 @@ export interface GameState {
 // [BLOCK: Constants]
 export const HAND_SIZE = 5;
 export const CARDS_TO_PLACE = 3;
-export const TOTAL_ROUNDS = 7;
-export const CARDS_PER_TYPE = 7;               // per RPS type
+export const TOTAL_ROUNDS = 9;                 // extended from 7 per design discussion
+export const CARDS_PER_TYPE = 7;               // per RPS type — deck size unchanged
 export const DRAGON_COUNT = 1;                 // per deck
 export const DECK_SIZE = CARDS_PER_TYPE * 3 + DRAGON_COUNT; // 22
 export const SLOT_KEYS: SlotKey[] = ['left', 'center', 'right'];

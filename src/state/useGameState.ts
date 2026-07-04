@@ -16,7 +16,13 @@ import {
   SLOT_KEYS,
 } from '../types/game';
 import { createShuffledDeck, drawToFill, shuffleStack } from '../logic/deck';
-import { resolveRound, getSurvivors } from '../logic/combat';
+import {
+  resolveRound,
+  getSurvivors,
+  resolveCascade,
+  roundHasDragon,
+  getCascadeRoundWinner,
+} from '../logic/combat';
 
 // [BLOCK: Initial State Helpers]
 function makeEmptySlots(): BoardSlots {
@@ -52,6 +58,7 @@ function makeInitialState(difficulty: AIDifficulty = 'random'): GameState {
 
     roundHistory: [],
     pendingResolution: null,
+    pendingCascade: null,
     result: null,
   };
 }
@@ -174,21 +181,28 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    // -- Resolve all 3 slots (single source of truth for this round's
-    //    outcome), update slot states, update Smart AI tracking.
-    //    Stores the resolution in pendingResolution rather than pushing
-    //    round history immediately — history is recorded later via
-    //    RECORD_HISTORY so it doesn't spoil the reveal animation, and
-    //    survivor cycling in NEXT_ROUND reads the same stored resolution
-    //    instead of recomputing it (see GameState.pendingResolution).
+    // -- Resolve all 3 slots (single source of truth for this round's lane
+    //    outcomes), then run the cascade on top of that same resolution
+    //    (single source of truth for the round's cascade outcome too).
+    //    Both are stored in pendingResolution / pendingCascade rather than
+    //    recomputed later — resolveSlot() mutates card.exhausted in place,
+    //    both for lane resolution AND for cascade fights, so re-running
+    //    either a second time on the same card objects would corrupt
+    //    already-exhausted pairs (see GameState.pendingResolution /
+    //    pendingCascade doc comments in types/game.ts).
+    //    History is recorded later via RECORD_HISTORY so it doesn't spoil
+    //    the reveal animation; survivor cycling happens later via
+    //    NEXT_ROUND.
     case 'REVEAL_ROUND': {
       if (state.phase !== 'reveal') return state;
       if (!allSlotsPlaced(state.playerSlots)) return state;
       if (!allSlotsPlaced(state.aiSlots)) return state;
 
       const resolution = resolveRound(state.playerSlots, state.aiSlots);
+      const dragonPlayed = roundHasDragon(resolution);
+      const cascade = resolveCascade(resolution, dragonPlayed);
 
-      // Update slot states to reflect outcomes
+      // Apply raw lane outcomes to slot states first...
       const playerSlots: BoardSlots = { ...state.playerSlots };
       const aiSlots: BoardSlots = { ...state.aiSlots };
 
@@ -198,9 +212,20 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         aiSlots[key] = { ...aiSlots[key], state: ai };
       }
 
+      // ...then flip any cascade losers from 'won' to 'lost' on top.
+      for (const o of cascade.overrides) {
+        if (o.owner === 'player') {
+          playerSlots[o.slotKey] = { ...playerSlots[o.slotKey], state: 'lost' };
+        } else {
+          aiSlots[o.slotKey] = { ...aiSlots[o.slotKey], state: 'lost' };
+        }
+      }
+
       // Update Smart AI pattern tracking — Dragon plays are excluded
       // (ai-behavior.md defines no pattern behavior for it; patternHistory
-      // is typed to RPS types only, see types/game.ts).
+      // is typed to RPS types only, see types/game.ts). This tracks what
+      // the player PLACED, not the cascade outcome, so it's unaffected by
+      // cascade fights.
       const patternHistory = { ...state.ai.patternHistory };
       if (state.ai.difficulty === 'smart' && !state.ai.confidenceDisrupted) {
         for (const key of SLOT_KEYS) {
@@ -226,6 +251,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         playerSlots,
         aiSlots,
         pendingResolution: resolution,
+        pendingCascade: cascade,
         ai: {
           ...state.ai,
           patternHistory,
@@ -236,14 +262,15 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    // -- Build and push the round history entry, using the resolution
-    //    already computed by REVEAL_ROUND (not recomputed). Deferred until
-    //    after the reveal animation plays so history doesn't spoil outcomes
-    //    early (see ROADMAP.md history-timing note).
+    // -- Build and push the round history entry, using the resolution and
+    //    cascade already computed by REVEAL_ROUND (not recomputed).
+    //    Deferred until after the reveal animation plays so history
+    //    doesn't spoil outcomes early (see ROADMAP.md history-timing note).
     case 'RECORD_HISTORY': {
       if (!state.pendingResolution) return state;
 
       const resolution = state.pendingResolution;
+      const cascade = state.pendingCascade;
 
       const historyEntry: RoundHistoryEntry = {
         round: state.round,
@@ -264,6 +291,14 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         },
         playerCardsAfter: countCards(state, 'player'),
         aiCardsAfter: countCards(state, 'ai'),
+        cascade: cascade
+          ? {
+              triggered: cascade.triggered,
+              log: cascade.log,
+              survivingSlots: cascade.survivingSlots,
+              roundWinner: getCascadeRoundWinner(cascade),
+            }
+          : null,
       };
 
       return {
@@ -272,17 +307,38 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    // -- Cycle survivors to stack bottom (using the stored resolution from
-    //    REVEAL_ROUND, not a fresh resolveRound() call — see
-    //    GameState.pendingResolution for why), reset slots, advance round.
+    // -- Cycle survivors to stack bottom, reset slots, advance round.
+    //    Uses the stored resolution from REVEAL_ROUND (not a fresh
+    //    resolveRound() call — see GameState.pendingResolution), then
+    //    strips out any card the cascade discarded on top of that.
     case 'NEXT_ROUND': {
       if (state.phase !== 'resolution') return state;
       if (!state.pendingResolution) return state;
 
       const { playerSurvivors, aiSurvivors } = getSurvivors(state.pendingResolution);
 
-      const playerStack = [...state.playerStack, ...playerSurvivors];
-      const aiStack = [...state.aiStack, ...aiSurvivors];
+      let finalPlayerSurvivors = playerSurvivors;
+      let finalAiSurvivors = aiSurvivors;
+
+      if (state.pendingCascade) {
+        const resolution = state.pendingResolution;
+        const overriddenPlayerIds = new Set(
+          state.pendingCascade.overrides
+            .filter((o) => o.owner === 'player')
+            .map((o) => resolution[o.slotKey].playerCard.id)
+        );
+        const overriddenAiIds = new Set(
+          state.pendingCascade.overrides
+            .filter((o) => o.owner === 'ai')
+            .map((o) => resolution[o.slotKey].aiCard.id)
+        );
+
+        finalPlayerSurvivors = playerSurvivors.filter((c) => !overriddenPlayerIds.has(c.id));
+        finalAiSurvivors = aiSurvivors.filter((c) => !overriddenAiIds.has(c.id));
+      }
+
+      const playerStack = [...state.playerStack, ...finalPlayerSurvivors];
+      const aiStack = [...state.aiStack, ...finalAiSurvivors];
 
       const nextRound = state.round + 1;
       const isGameOver = nextRound > TOTAL_ROUNDS;
@@ -306,6 +362,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         aiHand: state.aiHand,
         aiSlots: makeEmptySlots(),
         pendingResolution: null,
+        pendingCascade: null,
         result,
       };
     }
