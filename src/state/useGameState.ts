@@ -3,7 +3,6 @@
 import { useReducer } from 'react';
 import type {
   GameState,
-  GamePhase,
   Card,
   SlotKey,
   BoardSlots,
@@ -52,6 +51,7 @@ function makeInitialState(difficulty: AIDifficulty = 'random'): GameState {
     },
 
     roundHistory: [],
+    pendingResolution: null,
     result: null,
   };
 }
@@ -63,6 +63,7 @@ export type GameAction =
   | { type: 'REMOVE_CARD'; slotKey: SlotKey }
   | { type: 'PLACE_AI_CARDS'; placements: Record<SlotKey, Card> }
   | { type: 'REVEAL_ROUND' }
+  | { type: 'RECORD_HISTORY' }
   | { type: 'NEXT_ROUND' }
   | { type: 'SHUFFLE_STACK' }
   | { type: 'SET_DIFFICULTY'; difficulty: AIDifficulty }
@@ -173,7 +174,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    // -- Resolve all 3 slots, update slot states
+    // -- Resolve all 3 slots (single source of truth for this round's
+    //    outcome), update slot states, update Smart AI tracking.
+    //    Stores the resolution in pendingResolution rather than pushing
+    //    round history immediately — history is recorded later via
+    //    RECORD_HISTORY so it doesn't spoil the reveal animation, and
+    //    survivor cycling in NEXT_ROUND reads the same stored resolution
+    //    instead of recomputing it (see GameState.pendingResolution).
     case 'REVEAL_ROUND': {
       if (state.phase !== 'reveal') return state;
       if (!allSlotsPlaced(state.playerSlots)) return state;
@@ -190,28 +197,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         playerSlots[key] = { ...playerSlots[key], state: player };
         aiSlots[key] = { ...aiSlots[key], state: ai };
       }
-
-      // Build round history entry
-      const historyEntry: RoundHistoryEntry = {
-        round: state.round,
-        playerSlots: {
-          left:   state.playerSlots.left.card!.type,
-          center: state.playerSlots.center.card!.type,
-          right:  state.playerSlots.right.card!.type,
-        },
-        aiSlots: {
-          left:   state.aiSlots.left.card!.type,
-          center: state.aiSlots.center.card!.type,
-          right:  state.aiSlots.right.card!.type,
-        },
-        resolutions: {
-          left:   { player: resolution.left.player,   ai: resolution.left.ai },
-          center: { player: resolution.center.player, ai: resolution.center.ai },
-          right:  { player: resolution.right.player,  ai: resolution.right.ai },
-        },
-        playerCardsAfter: countCards(state, 'player'),
-        aiCardsAfter: countCards(state, 'ai'),
-      };
 
       // Update Smart AI pattern tracking — Dragon plays are excluded
       // (ai-behavior.md defines no pattern behavior for it; patternHistory
@@ -240,7 +225,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         playerSlots,
         aiSlots,
-        roundHistory: [...state.roundHistory, historyEntry],
+        pendingResolution: resolution,
         ai: {
           ...state.ai,
           patternHistory,
@@ -251,12 +236,50 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    // -- Cycle survivors to stack bottom, reset slots, advance round
+    // -- Build and push the round history entry, using the resolution
+    //    already computed by REVEAL_ROUND (not recomputed). Deferred until
+    //    after the reveal animation plays so history doesn't spoil outcomes
+    //    early (see ROADMAP.md history-timing note).
+    case 'RECORD_HISTORY': {
+      if (!state.pendingResolution) return state;
+
+      const resolution = state.pendingResolution;
+
+      const historyEntry: RoundHistoryEntry = {
+        round: state.round,
+        playerSlots: {
+          left:   state.playerSlots.left.card!.type,
+          center: state.playerSlots.center.card!.type,
+          right:  state.playerSlots.right.card!.type,
+        },
+        aiSlots: {
+          left:   state.aiSlots.left.card!.type,
+          center: state.aiSlots.center.card!.type,
+          right:  state.aiSlots.right.card!.type,
+        },
+        resolutions: {
+          left:   { player: resolution.left.player,   ai: resolution.left.ai },
+          center: { player: resolution.center.player, ai: resolution.center.ai },
+          right:  { player: resolution.right.player,  ai: resolution.right.ai },
+        },
+        playerCardsAfter: countCards(state, 'player'),
+        aiCardsAfter: countCards(state, 'ai'),
+      };
+
+      return {
+        ...state,
+        roundHistory: [...state.roundHistory, historyEntry],
+      };
+    }
+
+    // -- Cycle survivors to stack bottom (using the stored resolution from
+    //    REVEAL_ROUND, not a fresh resolveRound() call — see
+    //    GameState.pendingResolution for why), reset slots, advance round.
     case 'NEXT_ROUND': {
       if (state.phase !== 'resolution') return state;
+      if (!state.pendingResolution) return state;
 
-      const resolution = resolveRound(state.playerSlots, state.aiSlots);
-      const { playerSurvivors, aiSurvivors } = getSurvivors(resolution);
+      const { playerSurvivors, aiSurvivors } = getSurvivors(state.pendingResolution);
 
       const playerStack = [...state.playerStack, ...playerSurvivors];
       const aiStack = [...state.aiStack, ...aiSurvivors];
@@ -282,6 +305,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         aiStack,
         aiHand: state.aiHand,
         aiSlots: makeEmptySlots(),
+        pendingResolution: null,
         result,
       };
     }

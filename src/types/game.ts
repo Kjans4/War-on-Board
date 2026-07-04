@@ -111,6 +111,17 @@ export interface GameState {
   // History
   roundHistory: RoundHistoryEntry[];
 
+  // [BLOCK: Pending Resolution]
+  // Set once by REVEAL_ROUND (the single call to resolveRound() for a given
+  // round) and read by both RECORD_HISTORY (to build the history entry) and
+  // NEXT_ROUND (to compute survivors). This exists because resolveSlot()
+  // mutates card.exhausted in place on a fresh same-type tie — calling
+  // resolveRound() a second time on the same card objects (as NEXT_ROUND
+  // used to do) would re-evaluate an already-exhausted pair as an
+  // exhausted-vs-exhausted tie-lost, silently discarding cards that should
+  // have survived. Cleared back to null once NEXT_ROUND consumes it.
+  pendingResolution: RoundResolution | null;
+
   // Result — only set when phase is 'gameover'
   result: 'player' | 'ai' | 'draw' | null;
 }
