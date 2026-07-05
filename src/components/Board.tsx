@@ -1,14 +1,11 @@
 // src/components/Board.tsx
 
-import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import clsx from 'clsx';
-import type { BoardSlots, SlotKey, Card as CardType, CardType as CardTypeUnion, Owner } from '../types/game';
+import type { BoardSlots, SlotKey, Card as CardType, Owner, GamePhase } from '../types/game';
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
-import { CardTypePicker, CardEditButton, cardTypePickerStyles, cardEditButtonStyles } from './CardTypePicker';
-import { getStackTypeCounts } from '../logic/deck';
 
 // [BLOCK: Reveal Step Type]
 // Exported so App.tsx can type its local animation state.
@@ -31,6 +28,12 @@ export type RevealStep = null | 'flipping' | 'left' | 'center' | 'right' | 'drag
 // 'dragonOverlay' is treated like being fully revealed (same as 'right'/
 // 'done') but with outcome badges still withheld until 'done' — the banner
 // plays over already-face-up cards, badges pop in only once it's done.
+//
+// NOTE: this only governs the reveal-sequence portion of a slot's life
+// (phase 'reveal'/'resolution'). AI slots during phase 'placement' are
+// handled separately below (see aiSlotVisuals) — they're always face-down
+// the instant they're filled, regardless of revealStep, since the reveal
+// sequence hasn't started yet.
 function slotVisuals(
   slotKey: SlotKey,
   revealStep: RevealStep,
@@ -58,22 +61,39 @@ function slotVisuals(
   };
 }
 
-// [BLOCK: Stack Inspector — Type Symbols]
-// Same symbol set as Card.tsx's TYPE_CONFIG. Not imported from there since
-// that map is keyed for full card rendering (colorClass etc.) and isn't
-// exported — this is just the glyph, kept local to the inspector list.
-const STACK_TYPE_SYMBOL: Record<CardType['type'], string> = {
-  Sword: '⚔️',
-  Arrow: '🏹',
-  Shield: '🛡️',
-  Dragon: '🐉',
-};
+// [BLOCK: AI Slot Visual State — Placement Phase]
+// AI cards land in aiSlots automatically (via App.tsx's 2s placement
+// timer) while phase is still 'placement' — well before the reveal
+// sequence starts. Without this, slotVisuals() above would render them
+// face-up the instant they're placed (revealStep is null during
+// placement), leaking the AI's placement to the player. This forces
+// face-down for any AI slot with a card during placement, and defers to
+// the normal reveal-driven logic once phase leaves 'placement'.
+//
+// Applies identically in Dev Test Mode — devMode only reveals the AI's
+// *hand* face-up (see battlefield__opp-hand below); once a card leaves
+// hand and is placed into a slot, it goes face-down like normal play.
+function aiSlotVisuals(
+  slotKey: SlotKey,
+  phase: GamePhase,
+  revealStep: RevealStep,
+  hasCard: boolean,
+): { visuallyFaceDown: boolean; showOutcome: boolean } {
+  if (phase === 'placement') {
+    return { visuallyFaceDown: hasCard, showOutcome: false };
+  }
+  return slotVisuals(slotKey, revealStep, hasCard);
+}
 
 // [BLOCK: Props]
 interface BoardProps {
   playerSlots: BoardSlots;
   aiSlots: BoardSlots;
   aiHand: CardType[];
+  // Current game phase — needed here (in addition to revealStep) so AI
+  // slots can be forced face-down the moment they're filled during
+  // 'placement', before any reveal-sequence step has begun.
+  phase: GamePhase;
   revealStep: RevealStep;
   selectedCardId: string | null;
   onSlotClick: (slotKey: SlotKey) => void;
@@ -89,24 +109,9 @@ interface BoardProps {
   // [Dev Test Mode — Phase 1] When true, the AI's hand renders face-up
   // instead of face-down. See dev-test-mode-plan.md. Does not affect any
   // combat/reveal logic — purely a visibility toggle over the opponent
-  // hand row.
+  // hand row. Slots still go face-down on placement regardless of devMode
+  // (see aiSlotVisuals above).
   devMode?: boolean;
-  // [Dev Test Mode — Phase 2] Full stack contents (top of stack = index 0,
-  // per deck.ts's drawToFill/survivor-append order). Only ever displayed
-  // when devMode is true, via the read-only stack inspector panel below.
-  // Not used for anything else — counts above still drive the icon badge.
-  playerStack: CardType[];
-  aiStack: CardType[];
-  // [Dev Test Mode — Phase 3] Swaps one of the AI's hand cards for a card
-  // of the chosen type, pulled from the AI's own stack (never the
-  // player's). Only wired up by the parent when devMode is true; the
-  // button/picker below simply no-ops if this isn't provided.
-  onSwapAiCard?: (cardId: string, newType: CardTypeUnion) => void;
-  // [Dev Test Mode — Phase 4] Swaps two cards' positions within whichever
-  // stack the inspector panel currently has open — owner is passed
-  // explicitly since one panel component serves both sides. No-ops if not
-  // provided.
-  onSwapStackCard?: (owner: Owner, cardId: string, newType: CardTypeUnion) => void;
 }
 
 // [BLOCK: Opponent Hand Fan]
@@ -123,113 +128,12 @@ function fanStyle(index: number, total: number): CSSProperties {
 }
 
 // [BLOCK: Stack Icon]
-// [Dev Test Mode — Phase 2] Gains an optional onClick, only wired up by the
-// parent when devMode is true — the icon becomes a button into the stack
-// inspector panel. Outside dev mode it renders exactly as before (inert).
-function StackIcon({
-  count,
-  label,
-  clickable = false,
-  onClick,
-}: {
-  count: number;
-  label: string;
-  clickable?: boolean;
-  onClick?: () => void;
-}) {
+function StackIcon({ count, label }: { count: number; label: string }) {
   return (
-    <div
-      className={clsx('stack-col', clickable && 'stack-col--clickable')}
-      onClick={clickable ? onClick : undefined}
-      role={clickable ? 'button' : undefined}
-      tabIndex={clickable ? 0 : undefined}
-      onKeyDown={clickable ? (e) => e.key === 'Enter' && onClick?.() : undefined}
-      title={clickable ? `Inspect ${label} stack` : undefined}
-    >
+    <div className="stack-col">
       <span className="stack-col__count">{count}</span>
       <div className="stack-col__icon" aria-hidden="true" />
       <span className="stack-col__label">{label}</span>
-    </div>
-  );
-}
-
-// [BLOCK: Stack Inspector Panel — Dev Test Mode Phase 2 / Phase 4]
-// Phase 2: read-only list of a stack's cards top-to-bottom with type +
-// exhausted flag. Phase 4 layers an optional edit affordance per row —
-// when onSwapCard is provided, each row gets the same "✎" button as hand
-// cards, opening a CardTypePicker that swaps that card's POSITION with
-// another card of the chosen type elsewhere in the same stack (see
-// useGameState.ts's DEV_SWAP_STACK_CARD — nothing enters/leaves the pool).
-// Still never dispatches directly; onSwapCard is the caller's handler.
-function StackInspectorPanel({
-  label,
-  cards,
-  onClose,
-  onSwapCard,
-}: {
-  label: string;
-  cards: CardType[];
-  onClose: () => void;
-  onSwapCard?: (cardId: string, newType: CardTypeUnion) => void;
-}) {
-  // [Dev Test Mode — Phase 4] Which row's type picker is open, if any.
-  // Local UI state only, same pattern as Hand.tsx / the AI-hand editor
-  // above — actual swap goes through onSwapCard.
-  const [editingCardId, setEditingCardId] = useState<string | null>(null);
-  const canEdit = !!onSwapCard;
-
-  return (
-    <div className="stack-inspector-backdrop" onClick={onClose}>
-      <div
-        className="stack-inspector"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label={`${label} stack contents`}
-      >
-        <div className="stack-inspector__header">
-          <span>{label} Stack ({cards.length})</span>
-          <button className="stack-inspector__close" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
-        </div>
-        <div className="stack-inspector__list">
-          {cards.length === 0 ? (
-            <p className="stack-inspector__empty">Stack is empty.</p>
-          ) : (
-            cards.map((card, i) => (
-              <div key={card.id} className="stack-inspector__row" style={{ position: 'relative' }}>
-                <span className="stack-inspector__pos">{i + 1}</span>
-                <span className="stack-inspector__symbol" aria-hidden="true">
-                  {STACK_TYPE_SYMBOL[card.type]}
-                </span>
-                <span className="stack-inspector__type">{card.type}</span>
-                {card.exhausted && (
-                  <span className="stack-inspector__exhausted">Exhausted</span>
-                )}
-
-                {canEdit && (
-                  <CardEditButton
-                    onClick={() =>
-                      setEditingCardId((prev) => (prev === card.id ? null : card.id))
-                    }
-                  />
-                )}
-
-                {canEdit && editingCardId === card.id && (
-                  <CardTypePicker
-                    counts={getStackTypeCounts(cards, card.id)}
-                    onPick={(newType) => {
-                      onSwapCard!(card.id, newType);
-                      setEditingCardId(null);
-                    }}
-                    onClose={() => setEditingCardId(null)}
-                  />
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -239,6 +143,7 @@ export function Board({
   playerSlots,
   aiSlots,
   aiHand,
+  phase,
   revealStep,
   selectedCardId,
   onSlotClick,
@@ -249,20 +154,7 @@ export function Board({
   canShuffle,
   dragonOverlayOwner,
   devMode = false,
-  playerStack,
-  aiStack,
-  onSwapAiCard,
-  onSwapStackCard,
 }: BoardProps) {
-  // [Dev Test Mode — Phase 2] Which stack's inspector panel is open, if
-  // any. Local UI state only — never touches GameState/reducer.
-  const [openStackPanel, setOpenStackPanel] = useState<Owner | null>(null);
-
-  // [Dev Test Mode — Phase 3] Which AI hand card (by id) has its type
-  // picker open, if any. Same pattern as Hand.tsx's editingCardId — local
-  // UI state only, actual swap goes through onSwapAiCard.
-  const [editingAiCardId, setEditingAiCardId] = useState<string | null>(null);
-
   // Overlay shows from the moment the timeline reaches 'dragonOverlay' and
   // lingers through 'done' (so it's still visible while outcome badges pop
   // in), then disappears once the round transitions and the caller resets
@@ -270,23 +162,12 @@ export function Board({
   const showDragonOverlay =
     dragonOverlayOwner !== null && (revealStep === 'dragonOverlay' || revealStep === 'done');
 
-  // [Dev Test Mode — Phase 3] Editing only available during placement
-  // (mirrors Hand.tsx's `disabled` gating) and only when the parent wired
-  // up a swap handler.
-  const canEditAiHand = devMode && placementActive && !!onSwapAiCard;
-  const aiStackCounts = canEditAiHand ? getStackTypeCounts(aiStack) : null;
-
   return (
     <div className="battlefield-row">
 
       {/* [SUB-BLOCK: Opponent Stack — left edge, floats toward opponent's row] */}
       <div className="stack-col-wrap stack-col-wrap--ai">
-        <StackIcon
-          count={aiStackCount}
-          label="Opponent"
-          clickable={devMode}
-          onClick={() => setOpenStackPanel('ai')}
-        />
+        <StackIcon count={aiStackCount} label="Opponent" />
       </div>
 
       {/* [SUB-BLOCK: Battlefield] */}
@@ -294,35 +175,11 @@ export function Board({
 
         {/* Opponent hand — face-down normally; face-up in Dev Test Mode
             (Phase 1) so the person can see what the AI is holding before
-            it places. Phase 3 adds an edit button + type picker per card
-            when devMode is on and we're still in placement. */}
+            it places. */}
         <div className="battlefield__opp-hand" aria-label={`Opponent hand: ${aiHand.length} cards`}>
           {aiHand.map((card, i) => (
-            <div
-              key={card.id}
-              className="battlefield__opp-card-wrap"
-              style={{ ...fanStyle(i, aiHand.length), position: 'relative' }}
-            >
+            <div key={card.id} className="battlefield__opp-card-wrap" style={fanStyle(i, aiHand.length)}>
               <Card card={card} faceDown={!devMode} />
-
-              {canEditAiHand && (
-                <CardEditButton
-                  onClick={() =>
-                    setEditingAiCardId((prev) => (prev === card.id ? null : card.id))
-                  }
-                />
-              )}
-
-              {canEditAiHand && editingAiCardId === card.id && aiStackCounts && (
-                <CardTypePicker
-                  counts={aiStackCounts}
-                  onPick={(newType) => {
-                    onSwapAiCard!(card.id, newType);
-                    setEditingAiCardId(null);
-                  }}
-                  onClose={() => setEditingAiCardId(null)}
-                />
-              )}
             </div>
           ))}
         </div>
@@ -332,7 +189,9 @@ export function Board({
           <span className="battlefield__row-label">Opponent</span>
           <div className="battlefield__slots">
             {SLOT_KEYS.map((key) => {
-              const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!aiSlots[key].card);
+              const { visuallyFaceDown, showOutcome } = aiSlotVisuals(
+                key, phase, revealStep, !!aiSlots[key].card
+              );
               return (
                 <Slot
                   key={key}
@@ -387,30 +246,11 @@ export function Board({
           </div>
         )}
 
-        {/* [SUB-BLOCK: Stack Inspector Panel — Dev Test Mode Phase 2 / 4] */}
-        {devMode && openStackPanel && (
-          <StackInspectorPanel
-            label={openStackPanel === 'player' ? 'Your' : "Opponent's"}
-            cards={openStackPanel === 'player' ? playerStack : aiStack}
-            onClose={() => setOpenStackPanel(null)}
-            onSwapCard={
-              onSwapStackCard
-                ? (cardId, newType) => onSwapStackCard(openStackPanel, cardId, newType)
-                : undefined
-            }
-          />
-        )}
-
       </div>
 
       {/* [SUB-BLOCK: Player Stack + Shuffle — right edge, floats toward player's row] */}
       <div className="stack-col-wrap stack-col-wrap--player">
-        <StackIcon
-          count={playerStackCount}
-          label="You"
-          clickable={devMode}
-          onClick={() => setOpenStackPanel('player')}
-        />
+        <StackIcon count={playerStackCount} label="You" />
         <button
           className="stack-col__shuffle"
           onClick={onShuffleStack}
@@ -519,20 +359,6 @@ export const boardStyles = `
     gap: 4px;
   }
 
-  /* [Dev Test Mode — Phase 2] Clickable affordance on the stack icon,
-     only applied when devMode is on (see StackIcon's clickable prop). */
-  .stack-col--clickable {
-    cursor: pointer;
-    border-radius: 8px;
-    transition: background 0.15s;
-  }
-  .stack-col--clickable:hover {
-    background: rgba(82,176,224,0.08);
-  }
-  .stack-col--clickable:hover .stack-col__icon {
-    border-color: #52b0e0;
-  }
-
   .stack-col__count {
     font-size: 20px;
     font-weight: 700;
@@ -547,7 +373,6 @@ export const boardStyles = `
     background: linear-gradient(135deg, #2a2a4a, #1a1a2e);
     border: 2px solid #444;
     box-shadow: 2px 2px 0 #161622, 4px 4px 0 #111;
-    transition: border-color 0.15s;
   }
 
   .stack-col__label {
@@ -613,114 +438,4 @@ export const boardStyles = `
     from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
     to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   }
-
-  /* [BLOCK: Stack Inspector Panel — Dev Test Mode Phase 2] */
-  .stack-inspector-backdrop {
-    position: absolute;
-    inset: 0;
-    z-index: 200;
-    background: rgba(0,0,0,0.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 10px;
-  }
-
-  .stack-inspector {
-    width: 240px;
-    max-height: 360px;
-    display: flex;
-    flex-direction: column;
-    background: #14141f;
-    border: 1px solid #333;
-    border-radius: 10px;
-    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
-    overflow: hidden;
-  }
-
-  .stack-inspector__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 12px;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #ccc;
-    border-bottom: 1px solid #222;
-    flex-shrink: 0;
-  }
-
-  .stack-inspector__close {
-    border: none;
-    background: transparent;
-    color: #777;
-    font-size: 13px;
-    cursor: pointer;
-    padding: 2px 6px;
-    line-height: 1;
-  }
-  .stack-inspector__close:hover { color: #eee; }
-
-  .stack-inspector__list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 4px;
-  }
-
-  .stack-inspector__empty {
-    padding: 14px 12px;
-    margin: 0;
-    font-size: 12px;
-    color: #555;
-    font-style: italic;
-    text-align: center;
-  }
-
-  .stack-inspector__row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    border-radius: 5px;
-    font-size: 12px;
-  }
-
-  .stack-inspector__row:nth-child(odd) {
-    background: #191924;
-  }
-
-  .stack-inspector__pos {
-    width: 18px;
-    flex-shrink: 0;
-    color: #555;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-  }
-
-  .stack-inspector__symbol {
-    flex-shrink: 0;
-  }
-
-  .stack-inspector__type {
-    flex: 1;
-    color: #ccc;
-    font-weight: 600;
-  }
-
-  .stack-inspector__exhausted {
-    flex-shrink: 0;
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #f0a050;
-    background: rgba(0,0,0,0.4);
-    padding: 1px 5px;
-    border-radius: 3px;
-  }
-
-  ${cardTypePickerStyles}
-  ${cardEditButtonStyles}
 `;

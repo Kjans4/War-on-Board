@@ -4,11 +4,9 @@ import { useReducer } from 'react';
 import type {
   GameState,
   Card,
-  CardType,
   SlotKey,
   BoardSlots,
   AIDifficulty,
-  Owner,
   RoundHistoryEntry,
 } from '../types/game';
 import {
@@ -68,34 +66,23 @@ function makeInitialState(difficulty: AIDifficulty = 'random'): GameState {
 }
 
 // [BLOCK: Action Types]
+// AI_PLACE_CARDS and CONFIRM_PLACEMENT replace the old single
+// 'PLACE_AI_CARDS' action. Splitting them lets the AI fill its slots
+// automatically (via a timer in App.tsx) while phase stays 'placement' —
+// the phase only advances to 'reveal' once the player explicitly confirms,
+// and only once both sides have placed (see CONFIRM_PLACEMENT below).
 export type GameAction =
   | { type: 'DRAW_CARDS' }
   | { type: 'PLACE_CARD'; slotKey: SlotKey; card: Card }
   | { type: 'REMOVE_CARD'; slotKey: SlotKey }
-  | { type: 'PLACE_AI_CARDS'; placements: Record<SlotKey, Card> }
+  | { type: 'AI_PLACE_CARDS'; placements: Record<SlotKey, Card> }
+  | { type: 'CONFIRM_PLACEMENT' }
   | { type: 'REVEAL_ROUND' }
   | { type: 'RECORD_HISTORY' }
   | { type: 'NEXT_ROUND' }
   | { type: 'SHUFFLE_STACK' }
   | { type: 'SET_DIFFICULTY'; difficulty: AIDifficulty }
   | { type: 'SET_DEV_MODE'; devMode: boolean }
-  // [Dev Test Mode — Phase 3] Swaps one hand card for a card of the chosen
-  // type, pulled from that SAME owner's own stack — never crosses player/AI
-  // pools (see dev-test-mode-plan.md's Phase 3 scope). No-op (falls through
-  // to returning state unchanged) if devMode is off, the card isn't found in
-  // that owner's hand, or the requested type has none left in that owner's
-  // stack — the picker UI is expected to already disable that option, this
-  // is just the defensive backstop.
-  | { type: 'DEV_SWAP_HAND_CARD'; owner: Owner; cardId: string; newType: CardType }
-  // [Dev Test Mode — Phase 4] Swaps two cards' positions within the SAME
-  // owner's stack — the card at `cardId` trades places with the first
-  // OTHER card of `newType` found in that stack. Nothing enters or leaves
-  // the 22-card pool; unlike Phase 3's hand<->stack swap, this never
-  // touches hand size or composition. No-op if devMode is off, the card
-  // isn't found in that owner's stack, or no other card of `newType`
-  // exists in it (e.g. trying to swap in the Dragon while editing the
-  // Dragon's own row — there's no second Dragon to trade with).
-  | { type: 'DEV_SWAP_STACK_CARD'; owner: Owner; cardId: string; newType: CardType }
   | { type: 'RESTART' };
 
 // [BLOCK: Validation Helpers]
@@ -179,10 +166,15 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    // -- AI places its 3 cards (called after player confirms placement)
-    case 'PLACE_AI_CARDS': {
+    // -- AI places its 3 cards automatically, fired by App.tsx's 2s
+    //    placement timer (not by the player's Play click). Fills aiSlots
+    //    only — phase stays 'placement' so the player can keep
+    //    placing/re-placing their own cards up until they hit Play.
+    //    Guarded on aiSlots still being empty so it can only fire once per
+    //    round even if something re-triggers it.
+    case 'AI_PLACE_CARDS': {
       if (state.phase !== 'placement') return state;
-      if (!allSlotsPlaced(state.playerSlots)) return state;
+      if (allSlotsPlaced(state.aiSlots)) return state;
 
       const { placements } = action;
       const aiSlots: BoardSlots = { ...state.aiSlots };
@@ -199,6 +191,21 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         aiHand,
         aiSlots,
+      };
+    }
+
+    // -- Player confirms placement (Play button). Only reachable once both
+    //    the player's 3 slots AND the AI's 3 slots are filled — App.tsx's
+    //    canConfirm gates the button itself, this is the reducer-side
+    //    guard. Advances phase to 'reveal', which kicks off the reveal
+    //    animation effect in App.tsx.
+    case 'CONFIRM_PLACEMENT': {
+      if (state.phase !== 'placement') return state;
+      if (!allSlotsPlaced(state.playerSlots)) return state;
+      if (!allSlotsPlaced(state.aiSlots)) return state;
+
+      return {
+        ...state,
         phase: 'reveal',
       };
     }
@@ -426,70 +433,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         devMode: action.devMode,
       };
-    }
-
-    // -- [Dev Test Mode — Phase 3] Swap a hand card for one of a chosen
-    //    type, pulled from that same owner's stack. The outgoing card is
-    //    returned to the bottom of that owner's own stack (same append
-    //    pattern as survivor cycling in NEXT_ROUND) — never fabricated,
-    //    never crosses player/AI pools. Preserves whatever `exhausted`
-    //    state the incoming stack card actually has (not reset to fresh) —
-    //    this is intentional: Django can deliberately pull an
-    //    already-exhausted card to set up an exhausted-tie test per
-    //    dev-test-mode-plan.md's stated purpose.
-    case 'DEV_SWAP_HAND_CARD': {
-      if (!state.devMode) return state;
-
-      const { owner, cardId, newType } = action;
-      const hand = owner === 'player' ? state.playerHand : state.aiHand;
-      const stack = owner === 'player' ? state.playerStack : state.aiStack;
-
-      const handIndex = hand.findIndex((c) => c.id === cardId);
-      if (handIndex === -1) return state;
-
-      const stackIndex = stack.findIndex((c) => c.type === newType);
-      if (stackIndex === -1) return state; // none of that type left in this side's stack
-
-      const outgoing = hand[handIndex];
-      const incoming = stack[stackIndex];
-
-      const newHand = [...hand];
-      newHand[handIndex] = incoming;
-
-      const newStack = [
-        ...stack.slice(0, stackIndex),
-        ...stack.slice(stackIndex + 1),
-        outgoing,
-      ];
-
-      return owner === 'player'
-        ? { ...state, playerHand: newHand, playerStack: newStack }
-        : { ...state, aiHand: newHand, aiStack: newStack };
-    }
-
-    // -- [Dev Test Mode — Phase 4] Swap two cards' positions within one
-    //    owner's stack. Pure in-place exchange — stack length and
-    //    per-instance composition are unchanged, only the two cards'
-    //    positions (and thus draw order) swap. See dev-test-mode-plan.md's
-    //    Phase 4.
-    case 'DEV_SWAP_STACK_CARD': {
-      if (!state.devMode) return state;
-
-      const { owner, cardId, newType } = action;
-      const stack = owner === 'player' ? state.playerStack : state.aiStack;
-
-      const cardIndex = stack.findIndex((c) => c.id === cardId);
-      if (cardIndex === -1) return state;
-
-      const donorIndex = stack.findIndex((c, i) => i !== cardIndex && c.type === newType);
-      if (donorIndex === -1) return state; // no other card of that type elsewhere in this stack
-
-      const newStack = [...stack];
-      [newStack[cardIndex], newStack[donorIndex]] = [newStack[donorIndex], newStack[cardIndex]];
-
-      return owner === 'player'
-        ? { ...state, playerStack: newStack }
-        : { ...state, aiStack: newStack };
     }
 
     // -- Restart the game entirely
