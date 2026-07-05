@@ -1,6 +1,6 @@
 // src/components/RoundHistory.tsx
 
-import type { RoundHistoryEntry, SlotKey, CombatOutcome } from '../types/game';
+import type { RoundHistoryEntry, SlotKey, CombatOutcome, CascadeFightLog, Owner } from '../types/game';
 import { SLOT_KEYS } from '../types/game';
 import clsx from 'clsx';
 
@@ -17,13 +17,50 @@ interface RoundHistoryProps {
 // 'dragon' maps to the same "Win" label as a plain 'won' — it's the
 // Dragon's owner's own lane, framed as a deliberate wipe rather than a
 // loss (see types/game.ts's SlotState doc comment).
+// 'cascaded' gets its own label/class — the lane's RPS matchup was won,
+// but the card was discarded afterward in the cascade fight, so it reads
+// differently from both a plain "Win" and a plain "Loss" (see
+// useGameState.ts's RECORD_HISTORY, which now stores the post-cascade
+// outcome here rather than the raw pre-cascade one).
 const OUTCOME_LABELS: Record<CombatOutcome, string> = {
   won: 'Win',
   lost: 'Loss',
+  cascaded: 'Cascaded',
   tied: 'Tie',
   'tied-lost': 'Spent',
   dragon: 'Win',
 };
+
+// [BLOCK: Cascade Fight Log Formatting]
+// Renders combat.ts's CascadeFightLog entries as short, plain-language
+// lines — "who fought whom, who came out on top" — in Left -> Center ->
+// Right chain order (the order they occurred in). Kept purely descriptive;
+// no new game logic here, just formatting already-computed data.
+function slotLabel(key: SlotKey): string {
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+function ownerLabel(owner: Owner): string {
+  return owner === 'player' ? 'You' : 'AI';
+}
+
+function formatFightLine(fight: CascadeFightLog): string {
+  const champ = `${slotLabel(fight.championSlot)} (${ownerLabel(fight.championOwner)})`;
+  const chall = `${slotLabel(fight.challengerSlot)} (${ownerLabel(fight.challengerOwner)})`;
+
+  switch (fight.outcome) {
+    case 'championWon':
+      return `${champ} held against ${chall}`;
+    case 'challengerWon':
+      return `${chall} took down ${champ}`;
+    case 'tied':
+      return `${champ} and ${chall} tied — chain halted`;
+    case 'tiedLost':
+      return `${champ} and ${chall} both fell to an exhausted tie — chain halted`;
+    default:
+      return '';
+  }
+}
 
 // [BLOCK: Component]
 export function RoundHistory({ history }: RoundHistoryProps) {
@@ -49,6 +86,7 @@ export function RoundHistory({ history }: RoundHistoryProps) {
               // both-sides-Dragon round leaves dragonSide null (it's a
               // cancel, not a wipe), so it falls through to normal display.
               const isDragonRound = entry.dragonSide !== null;
+              const cascadeTriggered = entry.cascade?.triggered ?? false;
 
               return (
                 <li key={entry.round} className="round-history__entry">
@@ -56,6 +94,11 @@ export function RoundHistory({ history }: RoundHistoryProps) {
                   <div className="round-history__entry-header">
                     <span className="round-history__round-label">
                       Round {entry.round}
+                      {cascadeTriggered && (
+                        <span className="round-history__cascade-tag" title="Cascade combat occurred this round">
+                          ⚔ Cascade
+                        </span>
+                      )}
                     </span>
                     <span className="round-history__counts">
                       {entry.playerCardsAfter} · {entry.aiCardsAfter}
@@ -103,6 +146,20 @@ export function RoundHistory({ history }: RoundHistoryProps) {
                       );
                     })}
                   </div>
+
+                  {/* [SUB-BLOCK: Cascade Fight Log] — only rendered when a
+                      cascade actually ran with at least one fight (0 or 1
+                      lane-winners never trigger one; see combat.ts's
+                      resolveCascade). Plain-language, in chain order. */}
+                  {cascadeTriggered && entry.cascade!.log.length > 0 && (
+                    <ul className="round-history__cascade-log">
+                      {entry.cascade!.log.map((fight, i) => (
+                        <li key={i} className="round-history__cascade-log-line">
+                          {formatFightLine(fight)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                 </li>
               );
@@ -172,6 +229,7 @@ export const roundHistoryStyles = `
     align-items: baseline;
     justify-content: space-between;
     margin-bottom: 5px;
+    gap: 6px;
   }
 
   .round-history__round-label {
@@ -180,11 +238,29 @@ export const roundHistoryStyles = `
     color: #ccc;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* [BLOCK: Cascade Tag] */
+  .round-history__cascade-tag {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0.02em;
+    color: #9d6fe0;
+    background: rgba(157,111,224,0.12);
+    border: 1px solid rgba(157,111,224,0.4);
+    border-radius: 4px;
+    padding: 1px 5px;
+    white-space: nowrap;
   }
 
   .round-history__counts {
     font-size: 10px;
     color: #666;
+    flex-shrink: 0;
   }
 
   .round-history__slots {
@@ -228,7 +304,27 @@ export const roundHistoryStyles = `
 
   .round-history__slot--won  .round-history__outcome-badge { background: #52c87a; color: #0a1a10; }
   .round-history__slot--lost .round-history__outcome-badge { background: #e05252; color: #1a0a0a; }
+  .round-history__slot--cascaded .round-history__outcome-badge { background: #9d6fe0; color: #1a0f2a; }
   .round-history__slot--tied .round-history__outcome-badge { background: #e0a030; color: #1a1000; }
   .round-history__slot--tied-lost .round-history__outcome-badge { background: #444; color: #aaa; }
   .round-history__slot--dragon .round-history__outcome-badge { background: #f0c040; color: #2a1a00; }
+
+  /* [BLOCK: Cascade Fight Log] */
+  .round-history__cascade-log {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(157,111,224,0.06);
+    border: 1px dashed rgba(157,111,224,0.25);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .round-history__cascade-log-line {
+    font-size: 10px;
+    color: #b39ddb;
+    line-height: 140%;
+  }
 `;

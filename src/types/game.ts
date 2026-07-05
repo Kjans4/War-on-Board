@@ -28,9 +28,15 @@ export type SlotState =
   | 'revealed'   // card flipped face-up during resolution
   | 'won'        // card survived this round's lane resolution
   | 'lost'       // card discarded — lost its lane outright, was destroyed
-                  // by the opponent's Dragon, was cancelled in a
-                  // both-play-Dragon lane, or won its lane but was later
-                  // discarded by a cascade fight (see CascadeResult)
+                  // by the opponent's Dragon, or was cancelled in a
+                  // both-play-Dragon lane
+  | 'cascaded'   // card WON its own lane's RPS matchup but was then
+                  // discarded by a cascade fight (see CascadeResult in
+                  // combat.ts). Kept distinct from plain 'lost' purely so
+                  // the UI can show "cascaded" instead of "loss" — for
+                  // scoring and survivor cycling it behaves exactly like
+                  // 'lost' (never returns to stack; see getSurvivors,
+                  // which only returns 'won'/'tied' cards).
   | 'tied'       // same-type fresh tie — card exhausted, survived, withdraws
                   // from the cascade entirely
   | 'tied-lost'  // exhausted vs exhausted — both discarded, withdraws from
@@ -52,7 +58,11 @@ export interface Slot {
 export type BoardSlots = Record<SlotKey, Slot>;
 
 // [BLOCK: Combat]
-export type CombatOutcome = 'won' | 'lost' | 'tied' | 'tied-lost' | 'dragon';
+// CombatOutcome mirrors SlotState's per-side outcome vocabulary. 'cascaded'
+// is a display-only refinement RECORD_HISTORY applies on top of the raw
+// resolveSlot() outcome (which only ever produces 'won'/'lost'/'tied'/
+// 'tied-lost'/'dragon' — see combat.ts) once cascade overrides are known.
+export type CombatOutcome = 'won' | 'lost' | 'tied' | 'tied-lost' | 'dragon' | 'cascaded';
 
 export interface SlotResolution {
   player: CombatOutcome;
@@ -102,8 +112,8 @@ export interface CascadeResult {
   // single winner may still stand by default.
   triggered: boolean;
   // Cards that won their own lane but were discarded by a cascade fight —
-  // consumers must flip these from 'won' to 'lost' for slot state, scoring,
-  // and survivor cycling.
+  // consumers must flip these from 'won' to 'lost' (display: 'cascaded')
+  // for slot state, scoring, and survivor cycling.
   overrides: CascadeCardRef[];
   // Card(s) left standing once the cascade finishes (or halts on a tie).
   survivingSlots: CascadeCardRef[];
@@ -132,6 +142,9 @@ export interface RoundHistoryEntry {
   round: number;
   playerSlots: Record<SlotKey, CardType>;
   aiSlots: Record<SlotKey, CardType>;
+  // Post-cascade outcome per lane, per side — i.e. this already reflects
+  // any cascade override as 'cascaded' rather than the raw pre-cascade
+  // 'won'/'lost' from resolveRound(). See useGameState.ts's RECORD_HISTORY.
   resolutions: Record<SlotKey, { player: CombatOutcome; ai: CombatOutcome }>;
   playerCardsAfter: number; // stack + hand count after round
   aiCardsAfter: number;

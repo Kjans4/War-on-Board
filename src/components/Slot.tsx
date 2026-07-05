@@ -19,11 +19,17 @@ interface SlotProps {
 }
 
 // [BLOCK: Outcome Config]
+// 'cascaded' is visually distinct from 'lost' — the card won its own
+// lane's RPS matchup but was then discarded by a cascade fight (see
+// combat.ts's resolveCascade / useGameState.ts's REVEAL_ROUND override
+// application). Without this the player has no way to tell "I lost this
+// matchup outright" apart from "I won it, but the cascade took it anyway."
 const OUTCOME_CONFIG: Partial<Record<SlotType['state'], { label: string; className: string }>> = {
-  won:       { label: 'Win',  className: 'slot--won'       },
-  lost:      { label: 'Loss', className: 'slot--lost'      },
-  tied:      { label: 'Tie',  className: 'slot--tied'      },
-  'tied-lost': { label: 'Spent', className: 'slot--tied-lost' },
+  won:       { label: 'Win',      className: 'slot--won'       },
+  lost:      { label: 'Loss',     className: 'slot--lost'      },
+  cascaded:  { label: 'Cascaded', className: 'slot--cascaded'  },
+  tied:      { label: 'Tie',      className: 'slot--tied'      },
+  'tied-lost': { label: 'Spent',  className: 'slot--tied-lost' },
 };
 
 // [BLOCK: Component]
@@ -132,6 +138,10 @@ export const slotStyles = `
 
   .slot--won       { border-color: #52c87a; box-shadow: 0 0 12px rgba(82,200,122,0.3); }
   .slot--lost      { border-color: #e05252; box-shadow: 0 0 12px rgba(224,82,82,0.3); }
+  /* Distinct from --lost: purple/violet reads as "taken down in a fight",
+     not "beaten outright" — same family as the Dragon's gold treatment
+     elsewhere, just a different hue so it doesn't get confused with wins. */
+  .slot--cascaded   { border-color: #9d6fe0; box-shadow: 0 0 12px rgba(157,111,224,0.35); }
   .slot--tied      { border-color: #e0a030; box-shadow: 0 0 12px rgba(224,160,48,0.3); }
   .slot--tied-lost { border-color: #666;    box-shadow: none; opacity: 0.6; }
 
@@ -151,6 +161,7 @@ export const slotStyles = `
 
   .slot--won       .slot__outcome-badge { background: #52c87a; color: #0a1a10; }
   .slot--lost      .slot__outcome-badge { background: #e05252; color: #1a0a0a; }
+  .slot--cascaded  .slot__outcome-badge { background: #9d6fe0; color: #1a0f2a; }
   .slot--tied      .slot__outcome-badge { background: #e0a030; color: #1a1000; }
   .slot--tied-lost .slot__outcome-badge { background: #444;    color: #aaa;    }
 `;

@@ -301,13 +301,19 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         aiSlots[key] = { ...aiSlots[key], state: ai };
       }
 
-      // ...then flip any cascade losers from 'won' to 'lost' on top.
-      // (No-op on Dragon rounds — resolveCascade never triggers for them.)
+      // ...then flip any cascade losers on top — 'cascaded' rather than
+      // plain 'lost', so the UI can distinguish "won this lane's RPS
+      // matchup but got cut down in the cascade" from "lost the lane
+      // outright." Mechanically identical to 'lost' for scoring/survivor
+      // cycling (see getSurvivors in combat.ts — 'cascaded' is not 'won'
+      // or 'tied', so it's excluded from survivors same as 'lost' always
+      // was). (No-op on Dragon rounds — resolveCascade never triggers for
+      // them.)
       for (const o of cascade.overrides) {
         if (o.owner === 'player') {
-          playerSlots[o.slotKey] = { ...playerSlots[o.slotKey], state: 'lost' };
+          playerSlots[o.slotKey] = { ...playerSlots[o.slotKey], state: 'cascaded' };
         } else {
-          aiSlots[o.slotKey] = { ...aiSlots[o.slotKey], state: 'lost' };
+          aiSlots[o.slotKey] = { ...aiSlots[o.slotKey], state: 'cascaded' };
         }
       }
 
@@ -356,12 +362,24 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     //    cascade already computed by REVEAL_ROUND (not recomputed).
     //    Deferred until after the reveal animation plays so history
     //    doesn't spoil outcomes early (see ROADMAP.md history-timing note).
+    //    The stored `resolutions` reflect the POST-cascade outcome (any
+    //    cascade-overridden lane reads as 'cascaded', not the raw 'won'
+    //    resolveRound() originally gave it) — this was a display gap
+    //    before: history used to show a cascaded-away lane as a plain
+    //    "Win" even though the card was actually discarded.
     case 'RECORD_HISTORY': {
       if (!state.pendingResolution) return state;
 
       const resolution = state.pendingResolution;
       const cascade = state.pendingCascade;
       const dragonInfo = getDragonInfo(resolution);
+
+      const cascadedPlayerSlots = new Set(
+        (cascade?.overrides ?? []).filter((o) => o.owner === 'player').map((o) => o.slotKey)
+      );
+      const cascadedAiSlots = new Set(
+        (cascade?.overrides ?? []).filter((o) => o.owner === 'ai').map((o) => o.slotKey)
+      );
 
       const historyEntry: RoundHistoryEntry = {
         round: state.round,
@@ -376,9 +394,18 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           right:  state.aiSlots.right.card!.type,
         },
         resolutions: {
-          left:   { player: resolution.left.player,   ai: resolution.left.ai },
-          center: { player: resolution.center.player, ai: resolution.center.ai },
-          right:  { player: resolution.right.player,  ai: resolution.right.ai },
+          left: {
+            player: cascadedPlayerSlots.has('left') ? 'cascaded' : resolution.left.player,
+            ai:     cascadedAiSlots.has('left')     ? 'cascaded' : resolution.left.ai,
+          },
+          center: {
+            player: cascadedPlayerSlots.has('center') ? 'cascaded' : resolution.center.player,
+            ai:     cascadedAiSlots.has('center')     ? 'cascaded' : resolution.center.ai,
+          },
+          right: {
+            player: cascadedPlayerSlots.has('right') ? 'cascaded' : resolution.right.player,
+            ai:     cascadedAiSlots.has('right')     ? 'cascaded' : resolution.right.ai,
+          },
         },
         playerCardsAfter: countCards(state, 'player'),
         aiCardsAfter: countCards(state, 'ai'),
