@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import clsx from 'clsx';
-import type { BoardSlots, SlotKey, Card as CardType, Owner } from '../types/game';
+import type { BoardSlots, SlotKey, Card as CardType, CardType as CardTypeUnion, Owner } from '../types/game';
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
+import { CardTypePicker, CardEditButton, cardTypePickerStyles, cardEditButtonStyles } from './CardTypePicker';
+import { getStackTypeCounts } from '../logic/deck';
 
 // [BLOCK: Reveal Step Type]
 // Exported so App.tsx can type its local animation state.
@@ -95,6 +97,11 @@ interface BoardProps {
   // Not used for anything else — counts above still drive the icon badge.
   playerStack: CardType[];
   aiStack: CardType[];
+  // [Dev Test Mode — Phase 3] Swaps one of the AI's hand cards for a card
+  // of the chosen type, pulled from the AI's own stack (never the
+  // player's). Only wired up by the parent when devMode is true; the
+  // button/picker below simply no-ops if this isn't provided.
+  onSwapAiCard?: (cardId: string, newType: CardTypeUnion) => void;
 }
 
 // [BLOCK: Opponent Hand Fan]
@@ -208,10 +215,16 @@ export function Board({
   devMode = false,
   playerStack,
   aiStack,
+  onSwapAiCard,
 }: BoardProps) {
   // [Dev Test Mode — Phase 2] Which stack's inspector panel is open, if
   // any. Local UI state only — never touches GameState/reducer.
   const [openStackPanel, setOpenStackPanel] = useState<Owner | null>(null);
+
+  // [Dev Test Mode — Phase 3] Which AI hand card (by id) has its type
+  // picker open, if any. Same pattern as Hand.tsx's editingCardId — local
+  // UI state only, actual swap goes through onSwapAiCard.
+  const [editingAiCardId, setEditingAiCardId] = useState<string | null>(null);
 
   // Overlay shows from the moment the timeline reaches 'dragonOverlay' and
   // lingers through 'done' (so it's still visible while outcome badges pop
@@ -219,6 +232,12 @@ export function Board({
   // dragonOverlayOwner to null.
   const showDragonOverlay =
     dragonOverlayOwner !== null && (revealStep === 'dragonOverlay' || revealStep === 'done');
+
+  // [Dev Test Mode — Phase 3] Editing only available during placement
+  // (mirrors Hand.tsx's `disabled` gating) and only when the parent wired
+  // up a swap handler.
+  const canEditAiHand = devMode && placementActive && !!onSwapAiCard;
+  const aiStackCounts = canEditAiHand ? getStackTypeCounts(aiStack) : null;
 
   return (
     <div className="battlefield-row">
@@ -238,11 +257,35 @@ export function Board({
 
         {/* Opponent hand — face-down normally; face-up in Dev Test Mode
             (Phase 1) so the person can see what the AI is holding before
-            it places. */}
+            it places. Phase 3 adds an edit button + type picker per card
+            when devMode is on and we're still in placement. */}
         <div className="battlefield__opp-hand" aria-label={`Opponent hand: ${aiHand.length} cards`}>
           {aiHand.map((card, i) => (
-            <div key={card.id} className="battlefield__opp-card-wrap" style={fanStyle(i, aiHand.length)}>
+            <div
+              key={card.id}
+              className="battlefield__opp-card-wrap"
+              style={{ ...fanStyle(i, aiHand.length), position: 'relative' }}
+            >
               <Card card={card} faceDown={!devMode} />
+
+              {canEditAiHand && (
+                <CardEditButton
+                  onClick={() =>
+                    setEditingAiCardId((prev) => (prev === card.id ? null : card.id))
+                  }
+                />
+              )}
+
+              {canEditAiHand && editingAiCardId === card.id && aiStackCounts && (
+                <CardTypePicker
+                  counts={aiStackCounts}
+                  onPick={(newType) => {
+                    onSwapAiCard!(card.id, newType);
+                    setEditingAiCardId(null);
+                  }}
+                  onClose={() => setEditingAiCardId(null)}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -635,4 +678,7 @@ export const boardStyles = `
     padding: 1px 5px;
     border-radius: 3px;
   }
+
+  ${cardTypePickerStyles}
+  ${cardEditButtonStyles}
 `;

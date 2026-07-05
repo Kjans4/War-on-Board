@@ -1,6 +1,6 @@
 // src/logic/deck.ts
 
-import type { Card, RPSType, Owner } from '../types/game';
+import type { Card, CardType, RPSType, Owner } from '../types/game';
 import { CARDS_PER_TYPE } from '../types/game';
 
 // [BLOCK: Deck Creation]
@@ -76,4 +76,19 @@ export function drawToFill(
 // Survivors at the bottom may move anywhere.
 export function shuffleStack(stack: Card[]): Card[] {
   return shuffle([...stack]);
+}
+
+// [BLOCK: Dev Test Mode — Stack Type Counts]
+// Phase 2 used this implicitly via the raw array in the stack inspector;
+// Phase 3 needs actual per-type counts to drive the hand-card type picker's
+// "(N left)" labels and disabled state. Counts only what's currently sitting
+// in that side's stack — cards already in hand or placed in slots aren't
+// visible to this function, matching "requested type unavailable" meaning
+// exactly what it says (not just globally scarce).
+export function getStackTypeCounts(stack: Card[]): Record<CardType, number> {
+  const counts: Record<CardType, number> = { Sword: 0, Arrow: 0, Shield: 0, Dragon: 0 };
+  for (const card of stack) {
+    counts[card.type]++;
+  }
+  return counts;
 }

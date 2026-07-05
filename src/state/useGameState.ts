@@ -4,9 +4,11 @@ import { useReducer } from 'react';
 import type {
   GameState,
   Card,
+  CardType,
   SlotKey,
   BoardSlots,
   AIDifficulty,
+  Owner,
   RoundHistoryEntry,
 } from '../types/game';
 import {
@@ -77,6 +79,14 @@ export type GameAction =
   | { type: 'SHUFFLE_STACK' }
   | { type: 'SET_DIFFICULTY'; difficulty: AIDifficulty }
   | { type: 'SET_DEV_MODE'; devMode: boolean }
+  // [Dev Test Mode — Phase 3] Swaps one hand card for a card of the chosen
+  // type, pulled from that SAME owner's own stack — never crosses player/AI
+  // pools (see dev-test-mode-plan.md's Phase 3 scope). No-op (falls through
+  // to returning state unchanged) if devMode is off, the card isn't found in
+  // that owner's hand, or the requested type has none left in that owner's
+  // stack — the picker UI is expected to already disable that option, this
+  // is just the defensive backstop.
+  | { type: 'DEV_SWAP_HAND_CARD'; owner: Owner; cardId: string; newType: CardType }
   | { type: 'RESTART' };
 
 // [BLOCK: Validation Helpers]
@@ -407,6 +417,45 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         devMode: action.devMode,
       };
+    }
+
+    // -- [Dev Test Mode — Phase 3] Swap a hand card for one of a chosen
+    //    type, pulled from that same owner's stack. The outgoing card is
+    //    returned to the bottom of that owner's own stack (same append
+    //    pattern as survivor cycling in NEXT_ROUND) — never fabricated,
+    //    never crosses player/AI pools. Preserves whatever `exhausted`
+    //    state the incoming stack card actually has (not reset to fresh) —
+    //    this is intentional: Django can deliberately pull an
+    //    already-exhausted card to set up an exhausted-tie test per
+    //    dev-test-mode-plan.md's stated purpose.
+    case 'DEV_SWAP_HAND_CARD': {
+      if (!state.devMode) return state;
+
+      const { owner, cardId, newType } = action;
+      const hand = owner === 'player' ? state.playerHand : state.aiHand;
+      const stack = owner === 'player' ? state.playerStack : state.aiStack;
+
+      const handIndex = hand.findIndex((c) => c.id === cardId);
+      if (handIndex === -1) return state;
+
+      const stackIndex = stack.findIndex((c) => c.type === newType);
+      if (stackIndex === -1) return state; // none of that type left in this side's stack
+
+      const outgoing = hand[handIndex];
+      const incoming = stack[stackIndex];
+
+      const newHand = [...hand];
+      newHand[handIndex] = incoming;
+
+      const newStack = [
+        ...stack.slice(0, stackIndex),
+        ...stack.slice(stackIndex + 1),
+        outgoing,
+      ];
+
+      return owner === 'player'
+        ? { ...state, playerHand: newHand, playerStack: newStack }
+        : { ...state, aiHand: newHand, aiStack: newStack };
     }
 
     // -- Restart the game entirely

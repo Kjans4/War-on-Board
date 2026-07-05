@@ -12,7 +12,7 @@ import { RoundHistory, roundHistoryStyles } from './components/RoundHistory';
 import { MainMenu, mainMenuStyles } from './components/MainMenu';
 import { cardStyles } from './components/Card';
 import { slotStyles } from './components/Slot';
-import type { Card as CardType, SlotKey, Owner } from './types/game';
+import type { Card as CardType, CardType as CardTypeUnion, SlotKey, Owner } from './types/game';
 import { SLOT_KEYS } from './types/game';
 
 // [BLOCK: Combined Component Styles]
@@ -292,6 +292,14 @@ function App() {
     dispatch({ type: 'SHUFFLE_STACK' });
   }
 
+  // [BLOCK: Dev Test Mode — Phase 3]
+  // Single entry point for both hands' swap actions — owner distinguishes
+  // which side's hand/stack the reducer touches. See useGameState.ts's
+  // DEV_SWAP_HAND_CARD (no-ops if devMode is off, defensively).
+  function handleDevSwapCard(owner: Owner, cardId: string, newType: CardTypeUnion) {
+    dispatch({ type: 'DEV_SWAP_HAND_CARD', owner, cardId, newType });
+  }
+
   if (!started) {
     return (
       <>
@@ -358,12 +366,16 @@ function App() {
                 devMode={devMode}
                 playerStack={playerStack}
                 aiStack={aiStack}
+                onSwapAiCard={(cardId, newType) => handleDevSwapCard('ai', cardId, newType)}
               />
               <Hand
                 hand={playerHand}
                 selectedCardId={selectedCardId}
                 onCardClick={handleCardClick}
                 disabled={phase !== 'placement'}
+                devMode={devMode}
+                stack={playerStack}
+                onSwapCard={(cardId, newType) => handleDevSwapCard('player', cardId, newType)}
               />
             </>
           )}
