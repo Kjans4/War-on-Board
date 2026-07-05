@@ -100,8 +100,6 @@ const appStyles = `
 `;
 
 // [BLOCK: Reveal + Auto-Transition Timings (ms)]
-// Base per-slot stagger timings — used verbatim for non-Dragon rounds, and
-// as building blocks for the Dragon-aware timeline below.
 const FLIP_TO_LEFT_MS    = 2000;
 const LEFT_TO_CENTER_MS  = 1500;
 const CENTER_TO_RIGHT_MS = 1500;
@@ -109,27 +107,10 @@ const RIGHT_TO_DONE_MS   = 800;
 const DONE_TO_HISTORY_MS = 500;
 const HISTORY_TO_NEXT_MS = 1500;
 
-// Dragon-specific timing: a short pause after all cards are face-up before
-// the "Dragon Attack" banner appears, then how long the banner alone holds
-// before outcome badges are allowed to pop in (i.e. before 'done').
 const DRAGON_OVERLAY_DELAY_MS = 500;
 const DRAGON_OVERLAY_HOLD_MS = 1400;
 
 // [BLOCK: Reveal Timeline Builder]
-// Produces the ordered list of {step, at} events to schedule as timeouts,
-// plus the final "done" timestamp (from which RECORD_HISTORY / NEXT_ROUND
-// are scheduled, unchanged from before).
-//
-// Non-Dragon rounds: unchanged staggered Left -> Center -> Right -> done.
-//
-// Dragon rounds: reveal proceeds normally up to and including the Dragon's
-// own slot; the moment the Dragon's slot would reveal, any slots that
-// haven't revealed yet jump ahead and reveal simultaneously with it
-// (achieved by jumping straight to the 'right' step, which — per
-// Board.tsx's slotVisuals — reveals all 3 slots at once regardless of
-// order). After a short pause, the 'dragonOverlay' step shows the banner;
-// after it holds, 'done' reveals the outcome badges (already carrying the
-// Dragon's wipe/save effects, computed synchronously by the reducer).
 interface StepEvent {
   step: RevealStep;
   at: number;
@@ -156,17 +137,12 @@ function buildRevealTimeline(dragonSlotIndex: number | null): { events: StepEven
   let t = FLIP_TO_LEFT_MS;
 
   if (dragonSlotIndex === 0) {
-    // Dragon in Left — everything reveals simultaneously right away.
     events.push({ step: 'right', at: t });
   } else if (dragonSlotIndex === 1) {
-    // Dragon in Center — Left reveals normally first, then Center+Right
-    // jump ahead together when the Dragon's turn comes up.
     events.push({ step: 'left', at: t });
     t += LEFT_TO_CENTER_MS;
     events.push({ step: 'right', at: t });
   } else {
-    // Dragon in Right — nothing to jump ahead, it's already last in the
-    // normal sequence.
     events.push({ step: 'left', at: t });
     t += LEFT_TO_CENTER_MS;
     events.push({ step: 'center', at: t });
@@ -190,11 +166,6 @@ function App() {
   const [revealStep, setRevealStep] = useState<RevealStep>(null);
   const [dragonOverlayOwner, setDragonOverlayOwner] = useState<Owner | null>(null);
 
-  // [BLOCK: Timer Refs]
-  // allTimers: every active timer ID — cleared on back-to-menu or skip
-  // revealFiredForRound: guards against double-firing the reveal effect
-  // historyRecordedForRound: guards against double-dispatching RECORD_HISTORY
-  //   if the auto-transition t5 already fired before the player hits Skip
   const allTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const revealFiredForRound = useRef<number>(-1);
   const historyRecordedForRound = useRef<number>(-1);
@@ -207,27 +178,15 @@ function App() {
     devMode,
   } = state;
 
-  // [BLOCK: Auto-draw at round start]
   useEffect(() => {
     if (started && phase === 'draw') dispatch({ type: 'DRAW_CARDS' });
   }, [started, phase, dispatch]);
 
-  // [BLOCK: Reveal + Auto-Transition Sequence]
-  // Fires once per round when phase enters 'reveal'.
-  // REVEAL_ROUND dispatched immediately (resolves game state, phase → resolution).
-  // Visual timer chain runs independently — no cleanup return so timers survive
-  // the reveal→resolution phase transition.
   useEffect(() => {
     if (!started || phase !== 'reveal') return;
     if (revealFiredForRound.current === round) return;
     revealFiredForRound.current = round;
 
-    // Detect the Dragon's placement from the CURRENT round's placed cards
-    // (playerSlots/aiSlots already hold them, pre-resolution) — needed
-    // before REVEAL_ROUND's dispatch has actually updated state, since
-    // dispatch is async relative to this effect. Returns null for
-    // no-Dragon rounds AND both-sides-Dragon rounds (a cancel, not a wipe —
-    // no overlay for that case).
     const dragonPlacement = findDragonPlacement(playerSlots, aiSlots);
     const dragonSlotIndex = dragonPlacement ? SLOT_KEYS.indexOf(dragonPlacement.slotKey) : null;
     setDragonOverlayOwner(dragonPlacement?.owner ?? null);
@@ -254,39 +213,27 @@ function App() {
 
     allTimers.current = [...stepTimers, historyTimer, nextRoundTimer];
 
-    // intentionally no cleanup return — timers must survive reveal→resolution
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started, phase, round]);
 
-  // [BLOCK: Reset reveal step when new round placement begins]
   useEffect(() => {
     if (phase === 'placement') setRevealStep(null);
   }, [phase]);
 
-  // [BLOCK: Clear card selection when leaving placement]
   useEffect(() => {
     if (phase !== 'placement') setSelectedCardId(null);
   }, [phase]);
 
-  // [BLOCK: Derived values]
   const canConfirm =
     phase === 'placement' &&
     SLOT_KEYS.every((k) => playerSlots[k].card !== null);
 
-  // canSkip: true for the entire reveal + auto-transition window.
-  // Phase is already 'resolution' by the time revealStep is set (REVEAL_ROUND
-  // fires immediately), so this covers flipping → left/center/right (or the
-  // Dragon-jump equivalent) → dragonOverlay (if applicable) → done → post-done
-  // transition, all the way until NEXT_ROUND fires.
   const canSkip = revealStep !== null && phase === 'resolution';
 
   const canShuffle = phase !== 'reveal' && phase !== 'gameover' && revealStep === null;
   const placementActive = phase === 'placement';
   const selectedCard = playerHand.find((c) => c.id === selectedCardId) ?? null;
 
-  // [BLOCK: Handlers]
-  // devMode is dispatched into reducer state BEFORE flipping `started` to
-  // true, so it's already set by the time the DRAW_CARDS effect fires.
   function handleStartGame(devModeOn: boolean) {
     dispatch({ type: 'SET_DEV_MODE', devMode: devModeOn });
     setStarted(true);
@@ -328,11 +275,6 @@ function App() {
     dispatch({ type: 'PLACE_AI_CARDS', placements });
   }
 
-  // [BLOCK: Skip Handler]
-  // Cancels all pending timers and immediately fires RECORD_HISTORY (if not
-  // already dispatched for this round by the auto-transition timer) +
-  // NEXT_ROUND, fast-forwarding through whatever part of the reveal/overlay
-  // sequence was still running.
   function handleSkip() {
     if (!canSkip) return;
     allTimers.current.forEach(clearTimeout);
@@ -350,7 +292,6 @@ function App() {
     dispatch({ type: 'SHUFFLE_STACK' });
   }
 
-  // [BLOCK: Render — Main Menu]
   if (!started) {
     return (
       <>
@@ -366,7 +307,6 @@ function App() {
     );
   }
 
-  // [BLOCK: Render — Game]
   return (
     <>
       <style>{combinedStyles}</style>
@@ -377,7 +317,6 @@ function App() {
 
       <div className="app-shell">
 
-        {/* [SUB-BLOCK: Sidebar] */}
         <div className="app-sidebar">
           <RoundCounter round={round} />
           <RoundHistory history={roundHistory} />
@@ -391,7 +330,6 @@ function App() {
           />
         </div>
 
-        {/* [SUB-BLOCK: Center — Battlefield + Hand] */}
         <div className="app-center">
           {phase === 'gameover' ? (
             <div className="app-gameover">
@@ -418,6 +356,8 @@ function App() {
                 canShuffle={canShuffle}
                 dragonOverlayOwner={dragonOverlayOwner}
                 devMode={devMode}
+                playerStack={playerStack}
+                aiStack={aiStack}
               />
               <Hand
                 hand={playerHand}
