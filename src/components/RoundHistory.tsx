@@ -14,11 +14,15 @@ interface RoundHistoryProps {
 }
 
 // [BLOCK: Outcome Label Config]
+// 'dragon' maps to the same "Win" label as a plain 'won' — it's the
+// Dragon's owner's own lane, framed as a deliberate wipe rather than a
+// loss (see types/game.ts's SlotState doc comment).
 const OUTCOME_LABELS: Record<CombatOutcome, string> = {
   won: 'Win',
   lost: 'Loss',
   tied: 'Tie',
   'tied-lost': 'Spent',
+  dragon: 'Win',
 };
 
 // [BLOCK: Component]
@@ -37,44 +41,72 @@ export function RoundHistory({ history }: RoundHistoryProps) {
           <p className="round-history__empty">No rounds completed yet.</p>
         ) : (
           <ul className="round-history__list">
-            {orderedHistory.map((entry) => (
-              <li key={entry.round} className="round-history__entry">
+            {orderedHistory.map((entry) => {
+              // A single-Dragon round (dragonSide set) wipes every lane in
+              // the Dragon owner's favor — per design, ALL 3 lanes display
+              // as "Dragon vs {opponent type} — Win" for that side, not
+              // just the lane the Dragon card physically occupied. A
+              // both-sides-Dragon round leaves dragonSide null (it's a
+              // cancel, not a wipe), so it falls through to normal display.
+              const isDragonRound = entry.dragonSide !== null;
 
-                <div className="round-history__entry-header">
-                  <span className="round-history__round-label">
-                    Round {entry.round}
-                  </span>
-                  <span className="round-history__counts">
-                    {entry.playerCardsAfter} · {entry.aiCardsAfter}
-                  </span>
-                </div>
+              return (
+                <li key={entry.round} className="round-history__entry">
 
-                <div className="round-history__slots">
-                  {SLOT_KEYS.map((key: SlotKey) => {
-                    const outcome = entry.resolutions[key];
-                    return (
-                      <div
-                        key={key}
-                        className={clsx(
-                          'round-history__slot',
-                          `round-history__slot--${outcome.player}`,
-                        )}
-                      >
-                        <span className="round-history__matchup">
-                          {entry.playerSlots[key]}
-                          <span className="round-history__vs" aria-hidden="true">vs</span>
-                          {entry.aiSlots[key]}
-                        </span>
-                        <span className="round-history__outcome-badge">
-                          {OUTCOME_LABELS[outcome.player]}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                  <div className="round-history__entry-header">
+                    <span className="round-history__round-label">
+                      Round {entry.round}
+                    </span>
+                    <span className="round-history__counts">
+                      {entry.playerCardsAfter} · {entry.aiCardsAfter}
+                    </span>
+                  </div>
 
-              </li>
-            ))}
+                  <div className="round-history__slots">
+                    {SLOT_KEYS.map((key: SlotKey) => {
+                      const outcome = entry.resolutions[key];
+
+                      let leftLabel: string = entry.playerSlots[key];
+                      let rightLabel: string = entry.aiSlots[key];
+                      let showLeftDragonIcon = false;
+                      let showRightDragonIcon = false;
+
+                      if (isDragonRound) {
+                        if (entry.dragonSide === 'player') {
+                          leftLabel = 'Dragon';
+                          showLeftDragonIcon = true;
+                        } else if (entry.dragonSide === 'ai') {
+                          rightLabel = 'Dragon';
+                          showRightDragonIcon = true;
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={key}
+                          className={clsx(
+                            'round-history__slot',
+                            `round-history__slot--${outcome.player}`,
+                          )}
+                        >
+                          <span className="round-history__matchup">
+                            {showLeftDragonIcon && <span aria-hidden="true">🐉</span>}
+                            {leftLabel}
+                            <span className="round-history__vs" aria-hidden="true">vs</span>
+                            {showRightDragonIcon && <span aria-hidden="true">🐉</span>}
+                            {rightLabel}
+                          </span>
+                          <span className="round-history__outcome-badge">
+                            {OUTCOME_LABELS[outcome.player]}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -198,4 +230,5 @@ export const roundHistoryStyles = `
   .round-history__slot--lost .round-history__outcome-badge { background: #e05252; color: #1a0a0a; }
   .round-history__slot--tied .round-history__outcome-badge { background: #e0a030; color: #1a1000; }
   .round-history__slot--tied-lost .round-history__outcome-badge { background: #444; color: #aaa; }
+  .round-history__slot--dragon .round-history__outcome-badge { background: #f0c040; color: #2a1a00; }
 `;

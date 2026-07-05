@@ -5,15 +5,15 @@ import clsx from 'clsx';
 
 // [BLOCK: Type Config]
 // Visual label and color class per card type.
-// Dragon gets a minimal placeholder entry here — full illustrated art for
-// it is still an open item (ROADMAP.md "Dragon card placeholder"); this is
-// just enough to keep the type map complete and avoid a runtime crash while
-// gameplay logic is the focus.
+// Dragon's colorClass is owner-dependent (see dragonOwnerClass below) —
+// player Dragon reads gold, AI Dragon reads red, per design discussion —
+// so this table's 'dragon' entry only supplies the label/symbol; the
+// color class is resolved separately.
 const TYPE_CONFIG: Record<CardType['type'], { label: string; symbol: string; colorClass: string }> = {
   Sword:  { label: 'Sword',  symbol: '⚔️',  colorClass: 'card--sword'  },
   Arrow:  { label: 'Arrow',  symbol: '🏹',  colorClass: 'card--arrow'  },
   Shield: { label: 'Shield', symbol: '🛡️', colorClass: 'card--shield' },
-  Dragon: { label: 'Dragon', symbol: '🐉',  colorClass: 'card--dragon' },
+  Dragon: { label: 'Dragon', symbol: '🐉',  colorClass: 'card--dragon-player' }, // fallback, overridden below
 };
 
 // [BLOCK: Props]
@@ -29,11 +29,18 @@ interface CardProps {
 export function Card({ card, faceDown = false, selected = false, disabled = false, onClick }: CardProps) {
   const config = TYPE_CONFIG[card.type];
 
+  // Dragon's color depends on which side played it — gold for the player's
+  // Dragon, red for the AI's. Every other type uses its fixed colorClass.
+  const colorClass =
+    card.type === 'Dragon'
+      ? (card.owner === 'player' ? 'card--dragon-player' : 'card--dragon-ai')
+      : config.colorClass;
+
   return (
     <div
       className={clsx(
         'card',
-        !faceDown && config.colorClass,
+        !faceDown && colorClass,
         faceDown    && 'card--face-down',
         card.exhausted && !faceDown && 'card--exhausted',
         selected    && 'card--selected',
@@ -115,8 +122,10 @@ export const cardStyles = `
   .card--sword  { border-color: #e05252; background: #2a1a1a; }
   .card--arrow  { border-color: #52b0e0; background: #1a2230; }
   .card--shield { border-color: #52c87a; background: #1a2a1e; }
-  /* Dragon — placeholder styling only, real art is a Phase 4 item */
-  .card--dragon { border-color: #f0c040; background: #2a1a3a; }
+
+  /* Dragon — owner-aware coloring */
+  .card--dragon-player { border-color: #f0c040; background: #2a2410; box-shadow: 0 0 10px rgba(240,192,64,0.25); }
+  .card--dragon-ai     { border-color: #e05252; background: #2a1010; box-shadow: 0 0 10px rgba(224,82,82,0.25); }
 
   .card__symbol {
     font-size: 28px;

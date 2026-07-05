@@ -43,6 +43,39 @@ function findDragonSlot(slots: BoardSlots): SlotKey | null {
   return null;
 }
 
+// Scans the PLACED cards (before resolution even runs) for exactly one
+// Dragon across both sides. Used by the reveal-animation timeline in
+// App.tsx, which needs to know the Dragon's position before REVEAL_ROUND's
+// dispatch has actually updated state. Returns null if there's no Dragon
+// this round, or if both sides played one (that's a cancel — see
+// resolveRound's both-Dragon branch — so there's no single wipe to
+// animate/announce).
+export function findDragonPlacement(
+  playerSlots: BoardSlots,
+  aiSlots: BoardSlots
+): { owner: Owner; slotKey: SlotKey } | null {
+  const found: { owner: Owner; slotKey: SlotKey }[] = [];
+  for (const key of SLOT_KEYS) {
+    if (playerSlots[key].card?.type === 'Dragon') found.push({ owner: 'player', slotKey: key });
+    if (aiSlots[key].card?.type === 'Dragon') found.push({ owner: 'ai', slotKey: key });
+  }
+  return found.length === 1 ? found[0] : null;
+}
+
+// Same idea, but reads the outcome directly from an already-computed
+// RoundResolution (used by RECORD_HISTORY, after REVEAL_ROUND has run).
+// Only ever finds a match on a single-Dragon round — a both-Dragon round
+// never produces a 'dragon' outcome (that lane resolves to 'lost'/'lost'
+// as a cancel), so this correctly returns null for that case too.
+export function getDragonInfo(resolution: RoundResolution): { side: Owner; slotKey: SlotKey } | null {
+  const dragonLanes: { side: Owner; slotKey: SlotKey }[] = [];
+  for (const key of SLOT_KEYS) {
+    if (resolution[key].player === 'dragon') dragonLanes.push({ side: 'player', slotKey: key });
+    if (resolution[key].ai === 'dragon') dragonLanes.push({ side: 'ai', slotKey: key });
+  }
+  return dragonLanes.length === 1 ? dragonLanes[0] : null;
+}
+
 // [BLOCK: Single Slot Resolution — RPS/Exhausted only]
 // Assumes neither card is a Dragon; resolveRound only ever calls this for
 // slots untouched by a Dragon play (see below). Handles all exhausted tie
@@ -82,17 +115,23 @@ export function resolveSlot(playerCard: Card, aiCard: Card): SlotResolution {
 // Requires both player and AI slots to be fully placed — caller must
 // validate before resolving (throws otherwise, matching prior behavior).
 //
-// Dragon addendum (war-on-board-gdd.md's Dragon section, extended):
-//   - Dragon's own slot: Dragon is discarded ('lost'). 'lost' cards are
-//     never returned to stack (see getSurvivors below), so this alone
-//     satisfies "Dragon cannot be used again" with no extra state needed.
-//   - One-sided Dragon play: all 3 of the opponent's cards are destroyed
-//     ('lost'), the Dragon player's other 2 slots survive ('won')
-//     regardless of what's actually in them.
+// Dragon addendum (war-on-board-gdd.md's Dragon section, extended per
+// design discussion):
+//   - Dragon's own slot: for its OWNER, this resolves to 'dragon' — a
+//     distinct outcome from 'lost'. Mechanically identical to 'lost' for
+//     survivor cycling (never returns to stack, single-use), but reads
+//     correctly in the UI as a deliberate wipe rather than a defeat. The
+//     opposing card in that same lane is destroyed ('lost'), same as before.
+//   - One-sided Dragon play: all of the opponent's OTHER cards are
+//     destroyed ('lost'), the Dragon player's other 2 slots survive
+//     ('won') regardless of what's actually in them — those 2 cards
+//     return to stack normally, "saving" them.
 //   - Both sides play Dragon (any slot): effects cancel. Both Dragons are
-//     discarded with no destruction. Where one side's Dragon faces a
-//     non-Dragon card, that card survives untouched. Any slot untouched by
-//     either Dragon resolves normally via resolveSlot.
+//     discarded ('lost'/'lost' — a mutual cancel, NOT the 'dragon'
+//     outcome, since neither side actually wiped anything). Where one
+//     side's Dragon faces a non-Dragon card, that card survives untouched.
+//     Any slot untouched by either Dragon resolves normally via
+//     resolveSlot — normal combat continues in those lanes.
 export function resolveRound(
   playerSlots: BoardSlots,
   aiSlots: BoardSlots
@@ -119,7 +158,7 @@ export function resolveRound(
       const aiIsDragon = key === aiDragonSlot;
 
       if (playerIsDragon && aiIsDragon) {
-        // Dragon vs Dragon, same slot — both discarded, no contest.
+        // Dragon vs Dragon, same slot — both discarded, no contest, no wipe.
         resolution[key] = { player: 'lost', ai: 'lost', playerCard, aiCard };
       } else if (playerIsDragon) {
         // Player's Dragon discarded; AI's card here is untouched (cancelled).
@@ -140,7 +179,7 @@ export function resolveRound(
       const aiCard = aiSlots[key].card!;
       resolution[key] =
         key === playerDragonSlot
-          ? { player: 'lost', ai: 'lost', playerCard, aiCard }
+          ? { player: 'dragon', ai: 'lost', playerCard, aiCard }
           : { player: 'won', ai: 'lost', playerCard, aiCard };
     }
     return resolution;
@@ -153,7 +192,7 @@ export function resolveRound(
       const aiCard = aiSlots[key].card!;
       resolution[key] =
         key === aiDragonSlot
-          ? { player: 'lost', ai: 'lost', playerCard, aiCard }
+          ? { player: 'lost', ai: 'dragon', playerCard, aiCard }
           : { player: 'lost', ai: 'won', playerCard, aiCard };
     }
     return resolution;
@@ -171,8 +210,9 @@ export function resolveRound(
 // Given a round resolution, returns which cards go back to the stack bottom.
 // won → returns to stack
 // tied → returns to stack (exhausted flag already set in resolveSlot)
-// lost / tied-lost → discarded (not returned) — this is also how a played
-// Dragon permanently leaves the game; no separate "used" flag required.
+// lost / tied-lost / dragon → discarded (not returned) — 'dragon' is
+// mechanically identical to 'lost' here: a played Dragon permanently
+// leaves the game either way, whether it's framed as a win or a loss.
 //
 // NOTE: this reflects the raw per-lane resolution only. Cascade overrides
 // (see resolveCascade below) are applied on top of this by the caller
@@ -195,7 +235,7 @@ export function getSurvivors(resolution: RoundResolution): {
   return { playerSurvivors, aiSurvivors };
 }
 
-// [BLOCK: Cascade Combat — new mechanic]
+// [BLOCK: Cascade Combat]
 // After normal per-lane resolution, whichever card WON its lane (from
 // either side) enters a sequential elimination fight, Left -> Center ->
 // Right. Tied/tied-lost lanes withdraw and never enter the cascade.
@@ -213,6 +253,10 @@ export function getSurvivors(resolution: RoundResolution): {
 // when there's more than one card on the losing side still in reserve.
 // A tie inside the cascade halts the entire chain immediately — no further
 // fights occur, and any not-yet-fought reserves simply stand as survivors.
+//
+// A Dragon round never enters the cascade at all — the whole round was
+// already resolved by the Dragon override above, so there's no per-lane
+// "winner" in the normal sense to run a cascade over.
 
 interface CascadeEntry {
   slotKey: SlotKey;

@@ -22,6 +22,7 @@ import {
   resolveCascade,
   roundHasDragon,
   getCascadeRoundWinner,
+  getDragonInfo,
 } from '../logic/combat';
 
 // [BLOCK: Initial State Helpers]
@@ -213,6 +214,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       // ...then flip any cascade losers from 'won' to 'lost' on top.
+      // (No-op on Dragon rounds — resolveCascade never triggers for them.)
       for (const o of cascade.overrides) {
         if (o.owner === 'player') {
           playerSlots[o.slotKey] = { ...playerSlots[o.slotKey], state: 'lost' };
@@ -271,6 +273,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
       const resolution = state.pendingResolution;
       const cascade = state.pendingCascade;
+      const dragonInfo = getDragonInfo(resolution);
 
       const historyEntry: RoundHistoryEntry = {
         round: state.round,
@@ -299,6 +302,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
               roundWinner: getCascadeRoundWinner(cascade),
             }
           : null,
+        dragonSide: dragonInfo?.side ?? null,
+        dragonSlot: dragonInfo?.slotKey ?? null,
       };
 
       return {

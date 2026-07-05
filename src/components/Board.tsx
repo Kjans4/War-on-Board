@@ -1,20 +1,22 @@
 // src/components/Board.tsx
 
 import type { CSSProperties } from 'react';
-import type { BoardSlots, SlotKey, Card as CardType } from '../types/game';
+import clsx from 'clsx';
+import type { BoardSlots, SlotKey, Card as CardType, Owner } from '../types/game';
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
 
 // [BLOCK: Reveal Step Type]
 // Exported so App.tsx can type its local animation state.
-// null     = not in reveal sequence (placement or post-resolution)
-// flipping = Play clicked, all cards flip face-down (2s pause before left reveals)
-// left     = left slot revealing
-// center   = center slot revealing
-// right    = right slot revealing
-// done     = all revealed, awaiting Next Round
-export type RevealStep = null | 'flipping' | 'left' | 'center' | 'right' | 'done';
+// null        = not in reveal sequence (placement or post-resolution)
+// flipping    = Play clicked, all cards flip face-down (2s pause before reveal starts)
+// left        = left slot revealing
+// center      = left + center revealed
+// right       = all 3 slots revealed
+// dragonOverlay = all 3 revealed, "Dragon Attack" banner showing (Dragon rounds only)
+// done        = all revealed, outcome badges shown, awaiting Next Round
+export type RevealStep = null | 'flipping' | 'left' | 'center' | 'right' | 'dragonOverlay' | 'done';
 
 // [BLOCK: Per-slot visual state]
 // Given the current reveal step, returns whether each slot should be shown
@@ -22,12 +24,16 @@ export type RevealStep = null | 'flipping' | 'left' | 'center' | 'right' | 'done
 // This decouples "what the game state says" from "what's currently on screen"
 // so the staggered reveal can show each slot individually while the reducer
 // already has the final outcome for all three.
+//
+// 'dragonOverlay' is treated like being fully revealed (same as 'right'/
+// 'done') but with outcome badges still withheld until 'done' — the banner
+// plays over already-face-up cards, badges pop in only once it's done.
 function slotVisuals(
   slotKey: SlotKey,
   revealStep: RevealStep,
   hasCard: boolean,
 ): { visuallyFaceDown: boolean; showOutcome: boolean } {
-  if (!hasCard || revealStep === null || revealStep === 'done') {
+  if (!hasCard || revealStep === null || revealStep === 'done' || revealStep === 'dragonOverlay') {
     return { visuallyFaceDown: false, showOutcome: revealStep === 'done' };
   }
 
@@ -62,6 +68,10 @@ interface BoardProps {
   aiStackCount: number;
   onShuffleStack: () => void;
   canShuffle: boolean;
+  // Set only when exactly one side played a Dragon this round — drives the
+  // "Dragon Attack" banner. null the rest of the time (including
+  // both-sides-Dragon rounds, which cancel rather than wipe).
+  dragonOverlayOwner: Owner | null;
 }
 
 // [BLOCK: Opponent Hand Fan]
@@ -101,7 +111,15 @@ export function Board({
   aiStackCount,
   onShuffleStack,
   canShuffle,
+  dragonOverlayOwner,
 }: BoardProps) {
+  // Overlay shows from the moment the timeline reaches 'dragonOverlay' and
+  // lingers through 'done' (so it's still visible while outcome badges pop
+  // in), then disappears once the round transitions and the caller resets
+  // dragonOverlayOwner to null.
+  const showDragonOverlay =
+    dragonOverlayOwner !== null && (revealStep === 'dragonOverlay' || revealStep === 'done');
+
   return (
     <div className="battlefield-row">
 
@@ -169,6 +187,19 @@ export function Board({
           <span className="battlefield__row-label">You</span>
         </div>
 
+        {/* [SUB-BLOCK: Dragon Attack overlay] */}
+        {showDragonOverlay && (
+          <div
+            className={clsx(
+              'dragon-overlay',
+              dragonOverlayOwner === 'player' ? 'dragon-overlay--player' : 'dragon-overlay--ai',
+            )}
+            role="status"
+          >
+            <span className="dragon-overlay__text">Dragon Attack</span>
+          </div>
+        )}
+
       </div>
 
       {/* [SUB-BLOCK: Player Stack + Shuffle — right edge, floats toward player's row] */}
@@ -198,6 +229,7 @@ export const boardStyles = `
   }
 
   .battlefield {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -319,4 +351,45 @@ export const boardStyles = `
 
   .stack-col__shuffle:disabled { opacity: 0.35; cursor: not-allowed; }
   .stack-col__shuffle:not(:disabled):hover { border-color: #555; color: #bbb; }
+
+  /* [BLOCK: Dragon Attack Overlay] */
+  .dragon-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 100;
+    padding: 14px 36px;
+    border-radius: 10px;
+    pointer-events: none;
+    animation: dragon-overlay-pop 0.25s ease-out;
+  }
+
+  .dragon-overlay--player {
+    background: rgba(42, 36, 16, 0.92);
+    border: 2px solid #f0c040;
+    box-shadow: 0 0 28px rgba(240,192,64,0.45);
+  }
+
+  .dragon-overlay--ai {
+    background: rgba(42, 16, 16, 0.92);
+    border: 2px solid #e05252;
+    box-shadow: 0 0 28px rgba(224,82,82,0.45);
+  }
+
+  .dragon-overlay__text {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .dragon-overlay--player .dragon-overlay__text { color: #f0c040; }
+  .dragon-overlay--ai     .dragon-overlay__text { color: #e05252; }
+
+  @keyframes dragon-overlay-pop {
+    from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+    to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
 `;

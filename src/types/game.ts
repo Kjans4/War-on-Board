@@ -27,13 +27,21 @@ export type SlotState =
   | 'placed'     // card placed face-down, awaiting reveal
   | 'revealed'   // card flipped face-up during resolution
   | 'won'        // card survived this round's lane resolution
-  | 'lost'       // card discarded — either lost its lane outright, or won
-                  // its lane but was later discarded by a cascade fight
-                  // (see CascadeResult in combat.ts)
+  | 'lost'       // card discarded — lost its lane outright, was destroyed
+                  // by the opponent's Dragon, was cancelled in a
+                  // both-play-Dragon lane, or won its lane but was later
+                  // discarded by a cascade fight (see CascadeResult)
   | 'tied'       // same-type fresh tie — card exhausted, survived, withdraws
                   // from the cascade entirely
-  | 'tied-lost'; // exhausted vs exhausted — both discarded, withdraws from
+  | 'tied-lost'  // exhausted vs exhausted — both discarded, withdraws from
                   // the cascade entirely
+  | 'dragon';    // the Dragon's own lane, for its owner only — a distinct
+                  // "win" from a plain 'won': the card is consumed forever
+                  // (never returns to stack, same as 'lost' for cycling
+                  // purposes) but the outcome is a deliberate wipe, not a
+                  // loss. Kept separate from 'lost' purely so it reads
+                  // correctly in the UI instead of looking like the
+                  // Dragon itself lost.
 
 export interface Slot {
   key: SlotKey;
@@ -44,7 +52,7 @@ export interface Slot {
 export type BoardSlots = Record<SlotKey, Slot>;
 
 // [BLOCK: Combat]
-export type CombatOutcome = 'won' | 'lost' | 'tied' | 'tied-lost';
+export type CombatOutcome = 'won' | 'lost' | 'tied' | 'tied-lost' | 'dragon';
 
 export interface SlotResolution {
   player: CombatOutcome;
@@ -60,10 +68,11 @@ export interface RoundResolution {
 }
 
 // [BLOCK: Cascade Combat]
-// New mechanic: after normal per-lane resolution, whichever card WON its
-// lane (from either side) enters a sequential elimination fight, in
-// Left -> Center -> Right order. Tied/tied-lost lanes withdraw and never
-// enter the cascade. See combat.ts's resolveCascade() for the algorithm.
+// After normal per-lane resolution, whichever card WON its lane (from
+// either side) enters a sequential elimination fight, in Left -> Center ->
+// Right order. Tied/tied-lost lanes withdraw and never enter the cascade.
+// A Dragon round never enters the cascade at all (see combat.ts's
+// resolveCascade — it's gated on dragonPlayed).
 export type CascadeFightOutcome =
   | 'championWon'    // the standing champion beat the challenger
   | 'challengerWon'  // the challenger beat the champion (champion falls)
@@ -137,6 +146,11 @@ export interface RoundHistoryEntry {
     // round of pure ties, or a Dragon round).
     roundWinner: Owner | 'draw' | null;
   } | null;
+  // Set only when exactly one side played a Dragon this round (a
+  // both-sides-Dragon round cancels out and leaves these null — no wipe
+  // happened, normal lanes just fought it out).
+  dragonSide: Owner | null;
+  dragonSlot: SlotKey | null;
 }
 
 // [BLOCK: Game Phase]
