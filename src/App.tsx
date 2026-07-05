@@ -82,6 +82,21 @@ const appStyles = `
     color: #ccc;
     font-size: 16px;
   }
+
+  /* [BLOCK: Dev Mode Badge] */
+  .app-dev-badge {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #52b0e0;
+    border: 1px solid #52b0e0;
+    border-radius: 6px;
+    padding: 3px 8px;
+  }
 `;
 
 // [BLOCK: Reveal + Auto-Transition Timings (ms)]
@@ -189,6 +204,7 @@ function App() {
     playerStack, playerHand, playerSlots,
     aiStack, aiHand, aiSlots,
     ai, result, roundHistory,
+    devMode,
   } = state;
 
   // [BLOCK: Auto-draw at round start]
@@ -269,7 +285,12 @@ function App() {
   const selectedCard = playerHand.find((c) => c.id === selectedCardId) ?? null;
 
   // [BLOCK: Handlers]
-  function handleStartGame() { setStarted(true); }
+  // devMode is dispatched into reducer state BEFORE flipping `started` to
+  // true, so it's already set by the time the DRAW_CARDS effect fires.
+  function handleStartGame(devModeOn: boolean) {
+    dispatch({ type: 'SET_DEV_MODE', devMode: devModeOn });
+    setStarted(true);
+  }
 
   function handleBackToMenu() {
     allTimers.current.forEach(clearTimeout);
@@ -336,7 +357,10 @@ function App() {
         <style>{combinedStyles}</style>
         <style>{appStyles}</style>
         <div className="app-shell">
-          <MainMenu onSelectRandom={handleStartGame} />
+          <MainMenu
+            onSelectRandom={() => handleStartGame(false)}
+            onSelectDevTest={() => handleStartGame(true)}
+          />
         </div>
       </>
     );
@@ -349,6 +373,7 @@ function App() {
       <style>{appStyles}</style>
 
       <h1 className="app-title">War on Board</h1>
+      {devMode && <span className="app-dev-badge">Dev Test</span>}
 
       <div className="app-shell">
 
@@ -392,6 +417,7 @@ function App() {
                 onShuffleStack={handleShuffleStack}
                 canShuffle={canShuffle}
                 dragonOverlayOwner={dragonOverlayOwner}
+                devMode={devMode}
               />
               <Hand
                 hand={playerHand}

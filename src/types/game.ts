@@ -194,6 +194,14 @@ export interface GameState {
   pendingResolution: RoundResolution | null;
   pendingCascade: CascadeResult | null;
 
+  // [BLOCK: Dev Test Mode]
+  // Phase 1: when true, the AI's hand renders face-up in the UI instead of
+  // face-down, so the person can see what the AI is holding before placing.
+  // Does NOT change AI placement logic — Random/Smart AI still decides
+  // where its cards go; this only affects what's visible and (in later
+  // phases) editable. See dev-test-mode-plan.md.
+  devMode: boolean;
+
   // Result — only set when phase is 'gameover'
   result: 'player' | 'ai' | 'draw' | null;
 }

@@ -72,6 +72,11 @@ interface BoardProps {
   // "Dragon Attack" banner. null the rest of the time (including
   // both-sides-Dragon rounds, which cancel rather than wipe).
   dragonOverlayOwner: Owner | null;
+  // [Dev Test Mode — Phase 1] When true, the AI's hand renders face-up
+  // instead of face-down. See dev-test-mode-plan.md. Does not affect any
+  // combat/reveal logic — purely a visibility toggle over the opponent
+  // hand row.
+  devMode?: boolean;
 }
 
 // [BLOCK: Opponent Hand Fan]
@@ -112,6 +117,7 @@ export function Board({
   onShuffleStack,
   canShuffle,
   dragonOverlayOwner,
+  devMode = false,
 }: BoardProps) {
   // Overlay shows from the moment the timeline reaches 'dragonOverlay' and
   // lingers through 'done' (so it's still visible while outcome badges pop
@@ -131,11 +137,13 @@ export function Board({
       {/* [SUB-BLOCK: Battlefield] */}
       <div className="battlefield">
 
-        {/* Opponent hand — always face-down */}
+        {/* Opponent hand — face-down normally; face-up in Dev Test Mode
+            (Phase 1) so the person can see what the AI is holding before
+            it places. */}
         <div className="battlefield__opp-hand" aria-label={`Opponent hand: ${aiHand.length} cards`}>
           {aiHand.map((card, i) => (
             <div key={card.id} className="battlefield__opp-card-wrap" style={fanStyle(i, aiHand.length)}>
-              <Card card={card} faceDown />
+              <Card card={card} faceDown={!devMode} />
             </div>
           ))}
         </div>

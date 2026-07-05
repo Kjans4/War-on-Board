@@ -5,13 +5,14 @@ import clsx from 'clsx';
 // [BLOCK: Props]
 interface MainMenuProps {
   onSelectRandom: () => void;
+  onSelectDevTest: () => void;
   // Smart AI is fully implemented in logic/ai.ts (Phase 3) but not yet
   // wired up as a menu entry point — disabled here intentionally until
   // that's confirmed, per ROADMAP open items.
 }
 
 // [BLOCK: Component]
-export function MainMenu({ onSelectRandom }: MainMenuProps) {
+export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
   return (
     <div className="main-menu">
       <h1 className="main-menu__title">War on Board</h1>
@@ -33,6 +34,17 @@ export function MainMenu({ onSelectRandom }: MainMenuProps) {
         >
           Smart
           <span className="main-menu__btn-sub">Coming soon</span>
+        </button>
+
+        {/* [SUB-BLOCK: Dev Test Mode entry — see dev-test-mode-plan.md]
+            Phase 1: runs on Random AI underneath, reveals the AI's hand
+            face-up. Later phases add stack inspection + hand editing. */}
+        <button
+          className="main-menu__btn main-menu__btn--dev"
+          onClick={onSelectDevTest}
+        >
+          Dev Test
+          <span className="main-menu__btn-sub">Reveal &amp; configure AI hand</span>
         </button>
       </div>
     </div>
@@ -100,6 +112,11 @@ export const mainMenuStyles = `
   .main-menu__btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  .main-menu__btn--dev:hover:not(:disabled) {
+    border-color: #52b0e0;
+    background: rgba(82,176,224,0.06);
   }
 
   .main-menu__btn-sub {

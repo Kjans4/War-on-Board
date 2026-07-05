@@ -60,6 +60,7 @@ function makeInitialState(difficulty: AIDifficulty = 'random'): GameState {
     roundHistory: [],
     pendingResolution: null,
     pendingCascade: null,
+    devMode: false,
     result: null,
   };
 }
@@ -75,6 +76,7 @@ export type GameAction =
   | { type: 'NEXT_ROUND' }
   | { type: 'SHUFFLE_STACK' }
   | { type: 'SET_DIFFICULTY'; difficulty: AIDifficulty }
+  | { type: 'SET_DEV_MODE'; devMode: boolean }
   | { type: 'RESTART' };
 
 // [BLOCK: Validation Helpers]
@@ -394,6 +396,16 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           ...state.ai,
           difficulty: action.difficulty,
         },
+      };
+    }
+
+    // -- Toggle Dev Test Mode (Phase 1: reveals the AI's hand; later phases
+    //    add stack inspection + hand editing). Does not affect AI placement
+    //    logic — see dev-test-mode-plan.md.
+    case 'SET_DEV_MODE': {
+      return {
+        ...state,
+        devMode: action.devMode,
       };
     }
 
