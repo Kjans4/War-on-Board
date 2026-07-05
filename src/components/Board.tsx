@@ -102,6 +102,11 @@ interface BoardProps {
   // player's). Only wired up by the parent when devMode is true; the
   // button/picker below simply no-ops if this isn't provided.
   onSwapAiCard?: (cardId: string, newType: CardTypeUnion) => void;
+  // [Dev Test Mode — Phase 4] Swaps two cards' positions within whichever
+  // stack the inspector panel currently has open — owner is passed
+  // explicitly since one panel component serves both sides. No-ops if not
+  // provided.
+  onSwapStackCard?: (owner: Owner, cardId: string, newType: CardTypeUnion) => void;
 }
 
 // [BLOCK: Opponent Hand Fan]
@@ -148,19 +153,31 @@ function StackIcon({
   );
 }
 
-// [BLOCK: Stack Inspector Panel — Dev Test Mode Phase 2]
-// Read-only. Lists a stack's cards top-to-bottom with type + exhausted
-// flag. Does not dispatch anything — purely a view over props passed down
-// from GameState. Closed via backdrop click or the ✕ button.
+// [BLOCK: Stack Inspector Panel — Dev Test Mode Phase 2 / Phase 4]
+// Phase 2: read-only list of a stack's cards top-to-bottom with type +
+// exhausted flag. Phase 4 layers an optional edit affordance per row —
+// when onSwapCard is provided, each row gets the same "✎" button as hand
+// cards, opening a CardTypePicker that swaps that card's POSITION with
+// another card of the chosen type elsewhere in the same stack (see
+// useGameState.ts's DEV_SWAP_STACK_CARD — nothing enters/leaves the pool).
+// Still never dispatches directly; onSwapCard is the caller's handler.
 function StackInspectorPanel({
   label,
   cards,
   onClose,
+  onSwapCard,
 }: {
   label: string;
   cards: CardType[];
   onClose: () => void;
+  onSwapCard?: (cardId: string, newType: CardTypeUnion) => void;
 }) {
+  // [Dev Test Mode — Phase 4] Which row's type picker is open, if any.
+  // Local UI state only, same pattern as Hand.tsx / the AI-hand editor
+  // above — actual swap goes through onSwapCard.
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const canEdit = !!onSwapCard;
+
   return (
     <div className="stack-inspector-backdrop" onClick={onClose}>
       <div
@@ -180,7 +197,7 @@ function StackInspectorPanel({
             <p className="stack-inspector__empty">Stack is empty.</p>
           ) : (
             cards.map((card, i) => (
-              <div key={card.id} className="stack-inspector__row">
+              <div key={card.id} className="stack-inspector__row" style={{ position: 'relative' }}>
                 <span className="stack-inspector__pos">{i + 1}</span>
                 <span className="stack-inspector__symbol" aria-hidden="true">
                   {STACK_TYPE_SYMBOL[card.type]}
@@ -188,6 +205,25 @@ function StackInspectorPanel({
                 <span className="stack-inspector__type">{card.type}</span>
                 {card.exhausted && (
                   <span className="stack-inspector__exhausted">Exhausted</span>
+                )}
+
+                {canEdit && (
+                  <CardEditButton
+                    onClick={() =>
+                      setEditingCardId((prev) => (prev === card.id ? null : card.id))
+                    }
+                  />
+                )}
+
+                {canEdit && editingCardId === card.id && (
+                  <CardTypePicker
+                    counts={getStackTypeCounts(cards, card.id)}
+                    onPick={(newType) => {
+                      onSwapCard!(card.id, newType);
+                      setEditingCardId(null);
+                    }}
+                    onClose={() => setEditingCardId(null)}
+                  />
                 )}
               </div>
             ))
@@ -216,6 +252,7 @@ export function Board({
   playerStack,
   aiStack,
   onSwapAiCard,
+  onSwapStackCard,
 }: BoardProps) {
   // [Dev Test Mode — Phase 2] Which stack's inspector panel is open, if
   // any. Local UI state only — never touches GameState/reducer.
@@ -350,12 +387,17 @@ export function Board({
           </div>
         )}
 
-        {/* [SUB-BLOCK: Stack Inspector Panel — Dev Test Mode Phase 2] */}
+        {/* [SUB-BLOCK: Stack Inspector Panel — Dev Test Mode Phase 2 / 4] */}
         {devMode && openStackPanel && (
           <StackInspectorPanel
             label={openStackPanel === 'player' ? 'Your' : "Opponent's"}
             cards={openStackPanel === 'player' ? playerStack : aiStack}
             onClose={() => setOpenStackPanel(null)}
+            onSwapCard={
+              onSwapStackCard
+                ? (cardId, newType) => onSwapStackCard(openStackPanel, cardId, newType)
+                : undefined
+            }
           />
         )}
 

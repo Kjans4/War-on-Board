@@ -85,9 +85,16 @@ export function shuffleStack(stack: Card[]): Card[] {
 // in that side's stack — cards already in hand or placed in slots aren't
 // visible to this function, matching "requested type unavailable" meaning
 // exactly what it says (not just globally scarce).
-export function getStackTypeCounts(stack: Card[]): Record<CardType, number> {
+//
+// [Dev Test Mode — Phase 4] `excludeId` lets the in-stack swap picker ask
+// "what's available elsewhere in this stack" rather than "what's in this
+// stack at all" — without it, a stack containing exactly one Dragon would
+// show "Dragon: 1 left" on the Dragon's own row even though there's no
+// OTHER Dragon to trade positions with (see DEV_SWAP_STACK_CARD).
+export function getStackTypeCounts(stack: Card[], excludeId?: string): Record<CardType, number> {
   const counts: Record<CardType, number> = { Sword: 0, Arrow: 0, Shield: 0, Dragon: 0 };
   for (const card of stack) {
+    if (excludeId && card.id === excludeId) continue;
     counts[card.type]++;
   }
   return counts;

@@ -87,6 +87,15 @@ export type GameAction =
   // stack — the picker UI is expected to already disable that option, this
   // is just the defensive backstop.
   | { type: 'DEV_SWAP_HAND_CARD'; owner: Owner; cardId: string; newType: CardType }
+  // [Dev Test Mode — Phase 4] Swaps two cards' positions within the SAME
+  // owner's stack — the card at `cardId` trades places with the first
+  // OTHER card of `newType` found in that stack. Nothing enters or leaves
+  // the 22-card pool; unlike Phase 3's hand<->stack swap, this never
+  // touches hand size or composition. No-op if devMode is off, the card
+  // isn't found in that owner's stack, or no other card of `newType`
+  // exists in it (e.g. trying to swap in the Dragon while editing the
+  // Dragon's own row — there's no second Dragon to trade with).
+  | { type: 'DEV_SWAP_STACK_CARD'; owner: Owner; cardId: string; newType: CardType }
   | { type: 'RESTART' };
 
 // [BLOCK: Validation Helpers]
@@ -456,6 +465,31 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return owner === 'player'
         ? { ...state, playerHand: newHand, playerStack: newStack }
         : { ...state, aiHand: newHand, aiStack: newStack };
+    }
+
+    // -- [Dev Test Mode — Phase 4] Swap two cards' positions within one
+    //    owner's stack. Pure in-place exchange — stack length and
+    //    per-instance composition are unchanged, only the two cards'
+    //    positions (and thus draw order) swap. See dev-test-mode-plan.md's
+    //    Phase 4.
+    case 'DEV_SWAP_STACK_CARD': {
+      if (!state.devMode) return state;
+
+      const { owner, cardId, newType } = action;
+      const stack = owner === 'player' ? state.playerStack : state.aiStack;
+
+      const cardIndex = stack.findIndex((c) => c.id === cardId);
+      if (cardIndex === -1) return state;
+
+      const donorIndex = stack.findIndex((c, i) => i !== cardIndex && c.type === newType);
+      if (donorIndex === -1) return state; // no other card of that type elsewhere in this stack
+
+      const newStack = [...stack];
+      [newStack[cardIndex], newStack[donorIndex]] = [newStack[donorIndex], newStack[cardIndex]];
+
+      return owner === 'player'
+        ? { ...state, playerStack: newStack }
+        : { ...state, aiStack: newStack };
     }
 
     // -- Restart the game entirely

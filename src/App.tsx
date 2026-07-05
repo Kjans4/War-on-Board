@@ -300,6 +300,13 @@ function App() {
     dispatch({ type: 'DEV_SWAP_HAND_CARD', owner, cardId, newType });
   }
 
+  // [Dev Test Mode — Phase 4] Swaps two cards' positions within one
+  // owner's stack, from inside the stack inspector panel. See
+  // useGameState.ts's DEV_SWAP_STACK_CARD.
+  function handleDevSwapStackCard(owner: Owner, cardId: string, newType: CardTypeUnion) {
+    dispatch({ type: 'DEV_SWAP_STACK_CARD', owner, cardId, newType });
+  }
+
   if (!started) {
     return (
       <>
@@ -367,6 +374,7 @@ function App() {
                 playerStack={playerStack}
                 aiStack={aiStack}
                 onSwapAiCard={(cardId, newType) => handleDevSwapCard('ai', cardId, newType)}
+                onSwapStackCard={handleDevSwapStackCard}
               />
               <Hand
                 hand={playerHand}
