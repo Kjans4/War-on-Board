@@ -194,6 +194,11 @@ function App() {
   const [started, setStarted] = useState(false);
   const { state, dispatch } = useGameState('random');
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  // [Dev Test Mode] Mirrors selectedCardId for the AI's hand — only ever
+  // set/read when devMode is on. Lets Django click an AI hand card, then
+  // click an empty AI slot to place it (same two-step flow the player's
+  // own side already uses via selectedCardId + onSlotClick).
+  const [selectedAiCardId, setSelectedAiCardId] = useState<string | null>(null);
   const [revealStep, setRevealStep] = useState<RevealStep>(null);
   const [dragonOverlayOwner, setDragonOverlayOwner] = useState<Owner | null>(null);
 
@@ -305,7 +310,10 @@ function App() {
 
   // [BLOCK: Clear card selection when leaving placement]
   useEffect(() => {
-    if (phase !== 'placement') setSelectedCardId(null);
+    if (phase !== 'placement') {
+      setSelectedCardId(null);
+      setSelectedAiCardId(null);
+    }
   }, [phase]);
 
   // [BLOCK: Derived values]
@@ -329,6 +337,9 @@ function App() {
   const canShuffle = phase !== 'reveal' && phase !== 'gameover' && revealStep === null;
   const placementActive = phase === 'placement';
   const selectedCard = playerHand.find((c) => c.id === selectedCardId) ?? null;
+  // [Dev Test Mode] Only meaningful when devMode is on; harmless no-op
+  // lookup otherwise since selectedAiCardId stays null.
+  const selectedAiCard = aiHand.find((c) => c.id === selectedAiCardId) ?? null;
 
   // [BLOCK: Handlers]
   // devMode is dispatched into reducer state BEFORE flipping `started` to
@@ -348,6 +359,7 @@ function App() {
     aiPlacedForRound.current = -1;
     dispatch({ type: 'RESTART' });
     setSelectedCardId(null);
+    setSelectedAiCardId(null);
     setRevealStep(null);
     setDragonOverlayOwner(null);
     setStarted(false);
@@ -368,6 +380,29 @@ function App() {
     if (selectedCard) {
       dispatch({ type: 'PLACE_CARD', slotKey, card: selectedCard });
       setSelectedCardId(null);
+    }
+  }
+
+  // [BLOCK: Dev Test Mode — AI Hand/Slot Handlers]
+  // Mirrors handleCardClick/handleSlotClick above but for the AI's side.
+  // Gated on devMode here in addition to the reducer's own devMode guard —
+  // belt-and-suspenders so this can never fire a dispatch during normal
+  // play even if Board.tsx's click-wiring were ever loosened.
+  function handleAiCardClick(card: CardType) {
+    if (!devMode || phase !== 'placement') return;
+    setSelectedAiCardId((prev) => (prev === card.id ? null : card.id));
+  }
+
+  function handleAiSlotClick(slotKey: SlotKey) {
+    if (!devMode || phase !== 'placement') return;
+    const slot = aiSlots[slotKey];
+    if (slot.card) {
+      dispatch({ type: 'AI_REMOVE_CARD', slotKey });
+      return;
+    }
+    if (selectedAiCard) {
+      dispatch({ type: 'AI_PLACE_SINGLE_CARD', slotKey, card: selectedAiCard });
+      setSelectedAiCardId(null);
     }
   }
 
@@ -472,6 +507,9 @@ function App() {
                 canShuffle={canShuffle}
                 dragonOverlayOwner={dragonOverlayOwner}
                 devMode={devMode}
+                selectedAiCardId={selectedAiCardId}
+                onAiCardClick={handleAiCardClick}
+                onAiSlotClick={handleAiSlotClick}
               />
               <Hand
                 hand={playerHand}

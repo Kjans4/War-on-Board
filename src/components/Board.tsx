@@ -112,6 +112,13 @@ interface BoardProps {
   // hand row. Slots still go face-down on placement regardless of devMode
   // (see aiSlotVisuals above).
   devMode?: boolean;
+  // [Dev Test Mode] AI hand/slot editing — id of the currently-selected AI
+  // hand card (mirrors selectedCardId on the player's side), and the two
+  // handlers that drive the recall/place flow. All three are only ever
+  // exercised when devMode is true; harmless/unused otherwise.
+  selectedAiCardId?: string | null;
+  onAiCardClick?: (card: CardType) => void;
+  onAiSlotClick?: (slotKey: SlotKey) => void;
 }
 
 // [BLOCK: Opponent Hand Fan]
@@ -154,7 +161,14 @@ export function Board({
   canShuffle,
   dragonOverlayOwner,
   devMode = false,
+  selectedAiCardId = null,
+  onAiCardClick,
+  onAiSlotClick,
 }: BoardProps) {
+  // [Dev Test Mode] AI hand/slot interactions are only ever live when
+  // devMode is on AND we're in the placement phase — same window the
+  // player's own placement controls are active in.
+  const aiEditingActive = devMode && placementActive;
   // Overlay shows from the moment the timeline reaches 'dragonOverlay' and
   // lingers through 'done' (so it's still visible while outcome badges pop
   // in), then disappears once the round transitions and the caller resets
@@ -179,7 +193,13 @@ export function Board({
         <div className="battlefield__opp-hand" aria-label={`Opponent hand: ${aiHand.length} cards`}>
           {aiHand.map((card, i) => (
             <div key={card.id} className="battlefield__opp-card-wrap" style={fanStyle(i, aiHand.length)}>
-              <Card card={card} faceDown={!devMode} />
+              <Card
+                card={card}
+                faceDown={!devMode}
+                selected={aiEditingActive && card.id === selectedAiCardId}
+                disabled={!aiEditingActive}
+                onClick={aiEditingActive ? () => onAiCardClick?.(card) : undefined}
+              />
             </div>
           ))}
         </div>
@@ -192,6 +212,13 @@ export function Board({
               const { visuallyFaceDown, showOutcome } = aiSlotVisuals(
                 key, phase, revealStep, !!aiSlots[key].card
               );
+              // [Dev Test Mode] A slot is clickable if editing is active
+              // and either it already holds a card (click to recall) or
+              // one is empty with an AI hand card selected (click to
+              // place) — same clickable condition shape as the player's
+              // own slots below.
+              const aiClickable =
+                aiEditingActive && (aiSlots[key].card !== null || selectedAiCardId !== null);
               return (
                 <Slot
                   key={key}
@@ -199,6 +226,8 @@ export function Board({
                   owner="ai"
                   visuallyFaceDown={visuallyFaceDown}
                   showOutcome={showOutcome}
+                  onClick={() => onAiSlotClick?.(key)}
+                  clickable={aiClickable}
                 />
               );
             })}

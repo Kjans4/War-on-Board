@@ -71,11 +71,20 @@ function makeInitialState(difficulty: AIDifficulty = 'random'): GameState {
 // automatically (via a timer in App.tsx) while phase stays 'placement' —
 // the phase only advances to 'reveal' once the player explicitly confirms,
 // and only once both sides have placed (see CONFIRM_PLACEMENT below).
+//
+// AI_PLACE_SINGLE_CARD and AI_REMOVE_CARD are Dev Test Mode-only additions
+// (see dev-test-mode-plan.md) — they let Django manually recall one of the
+// AI's already-placed cards back to its hand, then manually place a
+// (possibly different) card from that same hand into the now-empty slot.
+// Both are gated on state.devMode in the reducer itself, not just hidden in
+// the UI, so they can never affect normal play even if mis-dispatched.
 export type GameAction =
   | { type: 'DRAW_CARDS' }
   | { type: 'PLACE_CARD'; slotKey: SlotKey; card: Card }
   | { type: 'REMOVE_CARD'; slotKey: SlotKey }
   | { type: 'AI_PLACE_CARDS'; placements: Record<SlotKey, Card> }
+  | { type: 'AI_PLACE_SINGLE_CARD'; slotKey: SlotKey; card: Card }
+  | { type: 'AI_REMOVE_CARD'; slotKey: SlotKey }
   | { type: 'CONFIRM_PLACEMENT' }
   | { type: 'REVEAL_ROUND' }
   | { type: 'RECORD_HISTORY' }
@@ -170,11 +179,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     //    placement timer (not by the player's Play click). Fills aiSlots
     //    only — phase stays 'placement' so the player can keep
     //    placing/re-placing their own cards up until they hit Play.
-    //    Guarded on aiSlots still being empty so it can only fire once per
-    //    round even if something re-triggers it.
+    //    Guarded on NO aiSlot having a card yet (rather than "not all 3
+    //    filled") so that if Dev Test Mode manually places a card into an
+    //    AI slot before the 2s timer fires, this won't overwrite it with a
+    //    stale placements object computed from the pre-manual-edit hand.
     case 'AI_PLACE_CARDS': {
       if (state.phase !== 'placement') return state;
-      if (allSlotsPlaced(state.aiSlots)) return state;
+      if (SLOT_KEYS.some((k) => state.aiSlots[k].card !== null)) return state;
 
       const { placements } = action;
       const aiSlots: BoardSlots = { ...state.aiSlots };
@@ -191,6 +202,55 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         aiHand,
         aiSlots,
+      };
+    }
+
+    // -- [Dev Test Mode] Manually place one card from the AI's hand into
+    //    one empty AI slot. Dev-only (see dev-test-mode-plan.md) — used
+    //    after AI_REMOVE_CARD recalls a slot, or to fill a slot the 2s
+    //    auto-placement timer hasn't reached yet. Does not touch phase;
+    //    App.tsx's canConfirm still requires all 3 AI slots filled before
+    //    Play unlocks, so this alone never skips ahead.
+    case 'AI_PLACE_SINGLE_CARD': {
+      if (!state.devMode) return state;
+      if (state.phase !== 'placement') return state;
+
+      const { slotKey, card } = action;
+      if (state.aiSlots[slotKey].card !== null) return state;
+      if (!state.aiHand.find((c) => c.id === card.id)) return state;
+
+      return {
+        ...state,
+        aiHand: state.aiHand.filter((c) => c.id !== card.id),
+        aiSlots: {
+          ...state.aiSlots,
+          [slotKey]: { key: slotKey, card, state: 'placed' },
+        },
+      };
+    }
+
+    // -- [Dev Test Mode] Recall a single AI-placed card back to the AI's
+    //    hand. Dev-only, placement-phase-only. Per design discussion: this
+    //    never triggers a re-fill — the 2s auto-placement timer (App.tsx)
+    //    only ever fires once per round (guarded there), so the slot stays
+    //    empty until AI_PLACE_SINGLE_CARD manually fills it. This also
+    //    correctly re-locks Play, since canConfirm requires all 3 AI slots
+    //    filled.
+    case 'AI_REMOVE_CARD': {
+      if (!state.devMode) return state;
+      if (state.phase !== 'placement') return state;
+
+      const { slotKey } = action;
+      const slot = state.aiSlots[slotKey];
+      if (!slot.card) return state;
+
+      return {
+        ...state,
+        aiHand: [...state.aiHand, slot.card],
+        aiSlots: {
+          ...state.aiSlots,
+          [slotKey]: { key: slotKey, card: null, state: 'empty' },
+        },
       };
     }
 
