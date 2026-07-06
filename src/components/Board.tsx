@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from 'react';
 import clsx from 'clsx';
-import type { BoardSlots, SlotKey, Card as CardType, Owner, GamePhase } from '../types/game';
+import type { BoardSlots, SlotKey, Card as CardType, Owner } from '../types/game';
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
@@ -28,18 +28,26 @@ export type RevealStep = null | 'flipping' | 'left' | 'center' | 'right' | 'drag
 // 'dragonOverlay' is treated like being fully revealed (same as 'right'/
 // 'done') but with outcome badges still withheld until 'done' — the banner
 // plays over already-face-up cards, badges pop in only once it's done.
-//
-// NOTE: this only governs the reveal-sequence portion of a slot's life
-// (phase 'reveal'/'resolution'). AI slots during phase 'placement' are
-// handled separately below (see aiSlotVisuals) — they're always face-down
-// the instant they're filled, regardless of revealStep, since the reveal
-// sequence hasn't started yet.
 function slotVisuals(
   slotKey: SlotKey,
   revealStep: RevealStep,
   hasCard: boolean,
+  hideDuringPlacement: boolean,
 ): { visuallyFaceDown: boolean; showOutcome: boolean } {
-  if (!hasCard || revealStep === null || revealStep === 'done' || revealStep === 'dragonOverlay') {
+  if (revealStep === null) {
+    // Pre-reveal — either mid-placement, or the brief gap between rounds.
+    // The player always sees their own placement (hideDuringPlacement is
+    // only ever true for the opponent's slots — see Board's call sites
+    // below). The opponent's placed-but-unrevealed card stays hidden here
+    // too: since the AI now places on its own ~2s timer independently of
+    // when the player finishes (see App.tsx), without this its card would
+    // flash face-up the instant that timer fires, well before the player
+    // has even finished their own placement — breaking the whole
+    // simultaneous-reveal/bluff premise the game is built on.
+    return { visuallyFaceDown: hasCard && hideDuringPlacement, showOutcome: false };
+  }
+
+  if (!hasCard || revealStep === 'done' || revealStep === 'dragonOverlay') {
     return { visuallyFaceDown: false, showOutcome: revealStep === 'done' };
   }
 
@@ -61,45 +69,19 @@ function slotVisuals(
   };
 }
 
-// [BLOCK: AI Slot Visual State — Placement Phase]
-// AI cards land in aiSlots automatically (via App.tsx's 2s placement
-// timer) while phase is still 'placement' — well before the reveal
-// sequence starts. Without this, slotVisuals() above would render them
-// face-up the instant they're placed (revealStep is null during
-// placement), leaking the AI's placement to the player. This forces
-// face-down for any AI slot with a card during placement, and defers to
-// the normal reveal-driven logic once phase leaves 'placement'.
-//
-// Applies identically in Dev Test Mode — devMode only reveals the AI's
-// *hand* face-up (see battlefield__opp-hand below); once a card leaves
-// hand and is placed into a slot, it goes face-down like normal play.
-function aiSlotVisuals(
-  slotKey: SlotKey,
-  phase: GamePhase,
-  revealStep: RevealStep,
-  hasCard: boolean,
-): { visuallyFaceDown: boolean; showOutcome: boolean } {
-  if (phase === 'placement') {
-    return { visuallyFaceDown: hasCard, showOutcome: false };
-  }
-  return slotVisuals(slotKey, revealStep, hasCard);
-}
-
 // [BLOCK: Props]
 interface BoardProps {
   playerSlots: BoardSlots;
   aiSlots: BoardSlots;
   aiHand: CardType[];
-  // Current game phase — needed here (in addition to revealStep) so AI
-  // slots can be forced face-down the moment they're filled during
-  // 'placement', before any reveal-sequence step has begun.
-  phase: GamePhase;
   revealStep: RevealStep;
   selectedCardId: string | null;
   onSlotClick: (slotKey: SlotKey) => void;
   placementActive: boolean;
   playerStackCount: number;
   aiStackCount: number;
+  playerDiscardCount: number;
+  aiDiscardCount: number;
   onShuffleStack: () => void;
   canShuffle: boolean;
   // Set only when exactly one side played a Dragon this round — drives the
@@ -109,16 +91,13 @@ interface BoardProps {
   // [Dev Test Mode — Phase 1] When true, the AI's hand renders face-up
   // instead of face-down. See dev-test-mode-plan.md. Does not affect any
   // combat/reveal logic — purely a visibility toggle over the opponent
-  // hand row. Slots still go face-down on placement regardless of devMode
-  // (see aiSlotVisuals above).
+  // hand row.
   devMode?: boolean;
-  // [Dev Test Mode] AI hand/slot editing — id of the currently-selected AI
-  // hand card (mirrors selectedCardId on the player's side), and the two
-  // handlers that drive the recall/place flow. All three are only ever
-  // exercised when devMode is true; harmless/unused otherwise.
-  selectedAiCardId?: string | null;
-  onAiCardClick?: (card: CardType) => void;
-  onAiSlotClick?: (slotKey: SlotKey) => void;
+  // Exposes DOM nodes for stack icons, discard piles, and slots up to
+  // App.tsx by key (e.g. 'stack-player', 'discard-ai', 'slot-player-left')
+  // so the return-flight animation can measure flight source/destination
+  // rects. Purely a measurement hook — no visual effect on its own.
+  registerRef?: (key: string, el: HTMLElement | null) => void;
 }
 
 // [BLOCK: Opponent Hand Fan]
@@ -135,12 +114,40 @@ function fanStyle(index: number, total: number): CSSProperties {
 }
 
 // [BLOCK: Stack Icon]
-function StackIcon({ count, label }: { count: number; label: string }) {
+function StackIcon({
+  count,
+  label,
+  elRef,
+}: {
+  count: number;
+  label: string;
+  elRef?: (el: HTMLDivElement | null) => void;
+}) {
   return (
-    <div className="stack-col">
+    <div className="stack-col" ref={elRef}>
       <span className="stack-col__count">{count}</span>
       <div className="stack-col__icon" aria-hidden="true" />
       <span className="stack-col__label">{label}</span>
+    </div>
+  );
+}
+
+// [BLOCK: Discard Pile]
+// Visual home for cards that didn't survive the round — purely a display
+// of GameState.playerDiscard/aiDiscard's length, plus a landing point for
+// the return-flight animation (see App.tsx's buildReturnFlights).
+function DiscardPile({
+  count,
+  elRef,
+}: {
+  count: number;
+  elRef?: (el: HTMLDivElement | null) => void;
+}) {
+  return (
+    <div className="discard-col" ref={elRef}>
+      <span className="discard-col__count">{count}</span>
+      <div className="discard-col__icon" aria-hidden="true" />
+      <span className="discard-col__label">Discard</span>
     </div>
   );
 }
@@ -150,25 +157,20 @@ export function Board({
   playerSlots,
   aiSlots,
   aiHand,
-  phase,
   revealStep,
   selectedCardId,
   onSlotClick,
   placementActive,
   playerStackCount,
   aiStackCount,
+  playerDiscardCount,
+  aiDiscardCount,
   onShuffleStack,
   canShuffle,
   dragonOverlayOwner,
   devMode = false,
-  selectedAiCardId = null,
-  onAiCardClick,
-  onAiSlotClick,
+  registerRef,
 }: BoardProps) {
-  // [Dev Test Mode] AI hand/slot interactions are only ever live when
-  // devMode is on AND we're in the placement phase — same window the
-  // player's own placement controls are active in.
-  const aiEditingActive = devMode && placementActive;
   // Overlay shows from the moment the timeline reaches 'dragonOverlay' and
   // lingers through 'done' (so it's still visible while outcome badges pop
   // in), then disappears once the round transitions and the caller resets
@@ -179,9 +181,17 @@ export function Board({
   return (
     <div className="battlefield-row">
 
-      {/* [SUB-BLOCK: Opponent Stack — left edge, floats toward opponent's row] */}
+      {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row] */}
       <div className="stack-col-wrap stack-col-wrap--ai">
-        <StackIcon count={aiStackCount} label="Opponent" />
+        <StackIcon
+          count={aiStackCount}
+          label="Opponent"
+          elRef={(el) => registerRef?.('stack-ai', el)}
+        />
+        <DiscardPile
+          count={aiDiscardCount}
+          elRef={(el) => registerRef?.('discard-ai', el)}
+        />
       </div>
 
       {/* [SUB-BLOCK: Battlefield] */}
@@ -193,13 +203,7 @@ export function Board({
         <div className="battlefield__opp-hand" aria-label={`Opponent hand: ${aiHand.length} cards`}>
           {aiHand.map((card, i) => (
             <div key={card.id} className="battlefield__opp-card-wrap" style={fanStyle(i, aiHand.length)}>
-              <Card
-                card={card}
-                faceDown={!devMode}
-                selected={aiEditingActive && card.id === selectedAiCardId}
-                disabled={!aiEditingActive}
-                onClick={aiEditingActive ? () => onAiCardClick?.(card) : undefined}
-              />
+              <Card card={card} faceDown={!devMode} />
             </div>
           ))}
         </div>
@@ -209,16 +213,7 @@ export function Board({
           <span className="battlefield__row-label">Opponent</span>
           <div className="battlefield__slots">
             {SLOT_KEYS.map((key) => {
-              const { visuallyFaceDown, showOutcome } = aiSlotVisuals(
-                key, phase, revealStep, !!aiSlots[key].card
-              );
-              // [Dev Test Mode] A slot is clickable if editing is active
-              // and either it already holds a card (click to recall) or
-              // one is empty with an AI hand card selected (click to
-              // place) — same clickable condition shape as the player's
-              // own slots below.
-              const aiClickable =
-                aiEditingActive && (aiSlots[key].card !== null || selectedAiCardId !== null);
+              const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!aiSlots[key].card, !devMode);
               return (
                 <Slot
                   key={key}
@@ -226,8 +221,7 @@ export function Board({
                   owner="ai"
                   visuallyFaceDown={visuallyFaceDown}
                   showOutcome={showOutcome}
-                  onClick={() => onAiSlotClick?.(key)}
-                  clickable={aiClickable}
+                  elRef={(el) => registerRef?.(`slot-ai-${key}`, el)}
                 />
               );
             })}
@@ -244,7 +238,7 @@ export function Board({
           <div className="battlefield__slots">
             {SLOT_KEYS.map((key) => {
               const slot = playerSlots[key];
-              const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!slot.card);
+              const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!slot.card, false);
               const clickable = placementActive && (slot.card !== null || selectedCardId !== null);
               return (
                 <Slot
@@ -255,6 +249,7 @@ export function Board({
                   showOutcome={showOutcome}
                   onClick={() => onSlotClick(key)}
                   clickable={clickable}
+                  elRef={(el) => registerRef?.(`slot-player-${key}`, el)}
                 />
               );
             })}
@@ -277,9 +272,17 @@ export function Board({
 
       </div>
 
-      {/* [SUB-BLOCK: Player Stack + Shuffle — right edge, floats toward player's row] */}
+      {/* [SUB-BLOCK: Player Stack + Discard + Shuffle — right edge, floats toward player's row] */}
       <div className="stack-col-wrap stack-col-wrap--player">
-        <StackIcon count={playerStackCount} label="You" />
+        <StackIcon
+          count={playerStackCount}
+          label="You"
+          elRef={(el) => registerRef?.('stack-player', el)}
+        />
+        <DiscardPile
+          count={playerDiscardCount}
+          elRef={(el) => registerRef?.('discard-player', el)}
+        />
         <button
           className="stack-col__shuffle"
           onClick={onShuffleStack}
@@ -426,6 +429,38 @@ export const boardStyles = `
 
   .stack-col__shuffle:disabled { opacity: 0.35; cursor: not-allowed; }
   .stack-col__shuffle:not(:disabled):hover { border-color: #555; color: #bbb; }
+
+  /* Discard pile column */
+  .discard-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .discard-col__count {
+    font-size: 16px;
+    font-weight: 700;
+    color: #998;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .discard-col__icon {
+    width: 40px;
+    height: 56px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #3a2a2a, #221515);
+    border: 2px solid #4a3333;
+    box-shadow: 2px 2px 0 #1a1010;
+    opacity: 0.85;
+  }
+
+  .discard-col__label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #665;
+  }
 
   /* [BLOCK: Dragon Attack Overlay] */
   .dragon-overlay {

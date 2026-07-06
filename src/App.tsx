@@ -1,6 +1,6 @@
 // src/App.tsx
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useGameState } from './state/useGameState';
 import { getAIPlacement } from './logic/ai';
 import { findDragonPlacement } from './logic/combat';
@@ -12,13 +12,20 @@ import { RoundHistory, roundHistoryStyles } from './components/RoundHistory';
 import { MainMenu, mainMenuStyles } from './components/MainMenu';
 import { cardStyles } from './components/Card';
 import { slotStyles } from './components/Slot';
-import type { Card as CardType, SlotKey, Owner } from './types/game';
+import { CardFlightOverlay, cardFlightOverlayStyles } from './components/CardFlightOverlay';
+import type { FlightItem } from './components/CardFlightOverlay';
+import type {
+  Card as CardType,
+  SlotKey,
+  Owner,
+  RoundResolution,
+} from './types/game';
 import { SLOT_KEYS } from './types/game';
 
 // [BLOCK: Combined Component Styles]
 const combinedStyles = [
   cardStyles, slotStyles, boardStyles, handStyles,
-  hudStyles, roundHistoryStyles, mainMenuStyles,
+  hudStyles, roundHistoryStyles, mainMenuStyles, cardFlightOverlayStyles,
 ].join('\n');
 
 // [BLOCK: App Shell Styles]
@@ -99,13 +106,6 @@ const appStyles = `
   }
 `;
 
-// [BLOCK: AI Placement Timing (ms)]
-// How long after entering 'placement' phase the AI automatically fills its
-// 3 slots. Non-skippable by design — the player cannot force this early by
-// finishing their own placement faster; Play stays disabled until the AI
-// has placed regardless of how quickly the player places their cards.
-const AI_PLACEMENT_DELAY_MS = 2000;
-
 // [BLOCK: Reveal + Auto-Transition Timings (ms)]
 // Base per-slot stagger timings — used verbatim for non-Dragon rounds, and
 // as building blocks for the Dragon-aware timeline below.
@@ -121,6 +121,21 @@ const HISTORY_TO_NEXT_MS = 1500;
 // before outcome badges are allowed to pop in (i.e. before 'done').
 const DRAGON_OVERLAY_DELAY_MS = 500;
 const DRAGON_OVERLAY_HOLD_MS = 1400;
+
+// [BLOCK: AI Placement Timing]
+// How long after entering 'placement' the AI commits its 3 cards,
+// independent of when the player finishes their own — see the new timer
+// effect below. Board.tsx's slotVisuals keeps the AI's placed cards face-
+// down until reveal regardless of this timing, so placing early never
+// leaks information to the player.
+const AI_PLACEMENT_DELAY_MS = 2000;
+
+// [BLOCK: Return-Flight Timing]
+// How long the discard/return flight animation takes once it starts.
+// Inserted between the existing HISTORY_TO_NEXT_MS pause and the actual
+// NEXT_ROUND dispatch — this genuinely extends total round length (by
+// design: pacing takes a back seat to letting the flight read clearly).
+const RETURN_FLIGHT_MS = 450;
 
 // [BLOCK: Reveal Timeline Builder]
 // Produces the ordered list of {step, at} events to schedule as timeouts,
@@ -190,40 +205,111 @@ function buildRevealTimeline(dragonSlotIndex: number | null): { events: StepEven
   return { events, doneAt };
 }
 
+// [BLOCK: Return-Flight Builder]
+// Reads the round's ALREADY-COMPUTED, cascade-relabeled resolution (see
+// useGameState.ts's REVEAL_ROUND "Cascade Relabeling" sub-block — any lane
+// a cascade fight overrode already reads 'cascaded' there, not 'won', so
+// survival can be read directly off resolution.player/ai with no separate
+// cross-reference against pendingCascade needed). Never recomputes
+// resolveRound/resolveCascade itself — see types/game.ts's
+// GameState.pendingResolution doc comment on why re-running them would
+// corrupt exhausted-flag mutations. Produces one flight per placed card:
+// survivors target their own stack icon, everyone else (lost, tied-lost,
+// dragon, cascaded) targets their own discard pile — mirroring the
+// survivor-vs-discard split in useGameState.ts's NEXT_ROUND case exactly,
+// but read-only.
+function buildReturnFlights(
+  resolution: RoundResolution,
+  refs: Record<string, HTMLElement | null>
+): FlightItem[] {
+  const flights: FlightItem[] = [];
+
+  for (const key of SLOT_KEYS) {
+    const { player, ai, playerCard, aiCard } = resolution[key];
+
+    const playerSurvives = player === 'won' || player === 'tied';
+    const aiSurvives = ai === 'won' || ai === 'tied';
+
+    const playerSlotEl = refs[`slot-player-${key}`];
+    if (playerSlotEl) {
+      const dest = refs[playerSurvives ? 'stack-player' : 'discard-player'];
+      if (dest) {
+        flights.push({
+          id: `player-${key}`,
+          card: playerCard,
+          fromRect: playerSlotEl.getBoundingClientRect(),
+          toRect: dest.getBoundingClientRect(),
+          faceDown: false,
+        });
+      }
+    }
+
+    const aiSlotEl = refs[`slot-ai-${key}`];
+    if (aiSlotEl) {
+      const dest = refs[aiSurvives ? 'stack-ai' : 'discard-ai'];
+      if (dest) {
+        flights.push({
+          id: `ai-${key}`,
+          card: aiCard,
+          fromRect: aiSlotEl.getBoundingClientRect(),
+          toRect: dest.getBoundingClientRect(),
+          faceDown: false,
+        });
+      }
+    }
+  }
+
+  return flights;
+}
+
 function App() {
   const [started, setStarted] = useState(false);
   const { state, dispatch } = useGameState('random');
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  // [Dev Test Mode] Mirrors selectedCardId for the AI's hand — only ever
-  // set/read when devMode is on. Lets Django click an AI hand card, then
-  // click an empty AI slot to place it (same two-step flow the player's
-  // own side already uses via selectedCardId + onSlotClick).
-  const [selectedAiCardId, setSelectedAiCardId] = useState<string | null>(null);
   const [revealStep, setRevealStep] = useState<RevealStep>(null);
   const [dragonOverlayOwner, setDragonOverlayOwner] = useState<Owner | null>(null);
+  const [flights, setFlights] = useState<FlightItem[]>([]);
 
   // [BLOCK: Timer Refs]
-  // allTimers: every active reveal/auto-transition timer ID — cleared on
-  //   back-to-menu or skip
+  // allTimers: every active timer ID — cleared on back-to-menu or skip
   // revealFiredForRound: guards against double-firing the reveal effect
   // historyRecordedForRound: guards against double-dispatching RECORD_HISTORY
   //   if the auto-transition t5 already fired before the player hits Skip
-  // aiPlacementTimerRef: the single pending "AI places its cards" timeout —
-  //   tracked separately from allTimers since it belongs to the placement
-  //   phase, not the reveal/auto-transition chain
-  // aiPlacedForRound: guards against re-scheduling the AI placement timer
-  //   if this effect re-fires for the same round (e.g. StrictMode double-run)
   const allTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const revealFiredForRound = useRef<number>(-1);
   const historyRecordedForRound = useRef<number>(-1);
-  const aiPlacementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiPlacedForRound = useRef<number>(-1);
+
+  // [BLOCK: Latest-State Ref]
+  // The reveal effect's timers are all scheduled at the moment REVEAL_ROUND
+  // fires, but the return-flight timer needs to read pendingResolution /
+  // pendingCascade as they stand SEVERAL RENDERS LATER (after REVEAL_ROUND
+  // has actually landed) — a normal closure over `state` here would be
+  // stale. This ref is kept in sync on every render so timer callbacks can
+  // read current state without re-running resolveRound/resolveCascade
+  // themselves (which would corrupt exhausted-flag mutations — see
+  // types/game.ts's GameState.pendingResolution doc comment).
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  // [BLOCK: Element Ref Registry]
+  // Populated by Board.tsx via registerRef for every stack icon, discard
+  // pile, and slot — keyed e.g. 'stack-player', 'discard-ai',
+  // 'slot-player-left'. Read by buildReturnFlights at return-flight time
+  // to measure flight source/destination rects.
+  const elementRefs = useRef<Record<string, HTMLElement | null>>({});
+  const registerRef = useCallback((key: string, el: HTMLElement | null) => {
+    elementRefs.current[key] = el;
+  }, []);
 
   const {
     round, phase,
     playerStack, playerHand, playerSlots,
     aiStack, aiHand, aiSlots,
     ai, result, roundHistory,
+    playerDiscard, aiDiscard,
     devMode,
   } = state;
 
@@ -232,13 +318,15 @@ function App() {
     if (started && phase === 'draw') dispatch({ type: 'DRAW_CARDS' });
   }, [started, phase, dispatch]);
 
-  // [BLOCK: AI Auto-Placement — 2s after entering placement phase]
-  // Fires once per round the moment phase becomes 'placement'. The AI
-  // fills its 3 slots automatically via AI_PLACE_CARDS (which does NOT
-  // advance phase — see useGameState.ts) regardless of how quickly the
-  // player places their own cards; this is intentionally non-skippable so
-  // the player can always see the AI commit before Play unlocks (canConfirm
-  // below is gated on both sides being placed).
+  // [BLOCK: AI Placement Timer]
+  // Fires once per round, AI_PLACEMENT_DELAY_MS after entering 'placement'
+  // — independent of when (or whether yet) the player has placed their
+  // own cards. Guarded per-round the same way the reveal effect guards
+  // itself, since this effect's dependency array can re-run for reasons
+  // other than a genuinely new round (e.g. a re-render during placement).
+  // No cleanup return, matching the reveal effect's convention — the only
+  // way phase leaves 'placement' before this fires is handleBackToMenu,
+  // which already clears every timer in allTimers.
   useEffect(() => {
     if (!started || phase !== 'placement') return;
     if (aiPlacedForRound.current === round) return;
@@ -246,14 +334,10 @@ function App() {
 
     const timer = setTimeout(() => {
       const placements = getAIPlacement(aiHand, ai, round);
-      dispatch({ type: 'AI_PLACE_CARDS', placements });
+      dispatch({ type: 'PLACE_AI_CARDS', placements });
     }, AI_PLACEMENT_DELAY_MS);
 
-    aiPlacementTimerRef.current = timer;
-
-    // intentionally no cleanup return — mirrors the reveal effect below;
-    // the timer is only ever cleared explicitly (back-to-menu) or left to
-    // fire naturally once per round
+    allTimers.current.push(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started, phase, round]);
 
@@ -291,13 +375,30 @@ function App() {
       dispatch({ type: 'RECORD_HISTORY' });
     }, doneAt + DONE_TO_HISTORY_MS);
 
+    // [SUB-BLOCK: Return Flight]
+    // Fires after the same HISTORY_TO_NEXT_MS pause the auto-transition
+    // always used, but instead of immediately advancing the round, it
+    // builds the return-flight ghosts (reading pendingResolution/
+    // pendingCascade via stateRef, since those are only current several
+    // renders after this effect started — see stateRef's doc comment).
+    const returnFlightTimer = setTimeout(() => {
+      const latest = stateRef.current;
+      if (latest.pendingResolution) {
+        setFlights(buildReturnFlights(latest.pendingResolution, elementRefs.current));
+      }
+    }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS);
+
+    // NEXT_ROUND now waits out the return flight before actually advancing
+    // — this is the "extend the timeline" tradeoff agreed on, rather than
+    // squeezing the flight into existing windows.
     const nextRoundTimer = setTimeout(() => {
+      setFlights([]);
       dispatch({ type: 'NEXT_ROUND' });
       setRevealStep(null);
       setDragonOverlayOwner(null);
-    }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS);
+    }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS + RETURN_FLIGHT_MS);
 
-    allTimers.current = [...stepTimers, historyTimer, nextRoundTimer];
+    allTimers.current = [...stepTimers, historyTimer, returnFlightTimer, nextRoundTimer];
 
     // intentionally no cleanup return — timers must survive reveal→resolution
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -310,22 +411,15 @@ function App() {
 
   // [BLOCK: Clear card selection when leaving placement]
   useEffect(() => {
-    if (phase !== 'placement') {
-      setSelectedCardId(null);
-      setSelectedAiCardId(null);
-    }
+    if (phase !== 'placement') setSelectedCardId(null);
   }, [phase]);
 
   // [BLOCK: Derived values]
-  // canConfirm: Play only unlocks once the player's 3 slots AND the AI's 3
-  // slots are filled. The AI side fills itself (see AI Auto-Placement
-  // effect above) — this is what makes the AI's placement non-skippable:
-  // there's no path for the player to force Play active before the AI has
-  // committed, no matter how fast their own 3 cards go down.
+  const aiHasPlaced = SLOT_KEYS.every((k) => aiSlots[k].card !== null);
   const canConfirm =
     phase === 'placement' &&
     SLOT_KEYS.every((k) => playerSlots[k].card !== null) &&
-    SLOT_KEYS.every((k) => aiSlots[k].card !== null);
+    aiHasPlaced;
 
   // canSkip: true for the entire reveal + auto-transition window.
   // Phase is already 'resolution' by the time revealStep is set (REVEAL_ROUND
@@ -337,9 +431,6 @@ function App() {
   const canShuffle = phase !== 'reveal' && phase !== 'gameover' && revealStep === null;
   const placementActive = phase === 'placement';
   const selectedCard = playerHand.find((c) => c.id === selectedCardId) ?? null;
-  // [Dev Test Mode] Only meaningful when devMode is on; harmless no-op
-  // lookup otherwise since selectedAiCardId stays null.
-  const selectedAiCard = aiHand.find((c) => c.id === selectedAiCardId) ?? null;
 
   // [BLOCK: Handlers]
   // devMode is dispatched into reducer state BEFORE flipping `started` to
@@ -352,16 +443,14 @@ function App() {
   function handleBackToMenu() {
     allTimers.current.forEach(clearTimeout);
     allTimers.current = [];
-    if (aiPlacementTimerRef.current) clearTimeout(aiPlacementTimerRef.current);
-    aiPlacementTimerRef.current = null;
     revealFiredForRound.current = -1;
     historyRecordedForRound.current = -1;
     aiPlacedForRound.current = -1;
     dispatch({ type: 'RESTART' });
     setSelectedCardId(null);
-    setSelectedAiCardId(null);
     setRevealStep(null);
     setDragonOverlayOwner(null);
+    setFlights([]);
     setStarted(false);
   }
 
@@ -383,48 +472,22 @@ function App() {
     }
   }
 
-  // [BLOCK: Dev Test Mode — AI Hand/Slot Handlers]
-  // Mirrors handleCardClick/handleSlotClick above but for the AI's side.
-  // Gated on devMode here in addition to the reducer's own devMode guard —
-  // belt-and-suspenders so this can never fire a dispatch during normal
-  // play even if Board.tsx's click-wiring were ever loosened.
-  function handleAiCardClick(card: CardType) {
-    if (!devMode || phase !== 'placement') return;
-    setSelectedAiCardId((prev) => (prev === card.id ? null : card.id));
-  }
-
-  function handleAiSlotClick(slotKey: SlotKey) {
-    if (!devMode || phase !== 'placement') return;
-    const slot = aiSlots[slotKey];
-    if (slot.card) {
-      dispatch({ type: 'AI_REMOVE_CARD', slotKey });
-      return;
-    }
-    if (selectedAiCard) {
-      dispatch({ type: 'AI_PLACE_SINGLE_CARD', slotKey, card: selectedAiCard });
-      setSelectedAiCardId(null);
-    }
-  }
-
-  // [BLOCK: Confirm Handler]
-  // No longer computes AI placement itself — the AI already placed via its
-  // own 2s timer (see AI Auto-Placement effect above). This just advances
-  // phase to 'reveal', and canConfirm already guarantees both sides are
-  // filled before this is reachable.
   function handleConfirmPlacement() {
     if (!canConfirm) return;
-    dispatch({ type: 'CONFIRM_PLACEMENT' });
+    dispatch({ type: 'START_REVEAL' });
   }
 
   // [BLOCK: Skip Handler]
   // Cancels all pending timers and immediately fires RECORD_HISTORY (if not
   // already dispatched for this round by the auto-transition timer) +
   // NEXT_ROUND, fast-forwarding through whatever part of the reveal/overlay
-  // sequence was still running.
+  // sequence was still running. Also clears any in-progress return flight
+  // immediately — no point animating a flight the player just skipped past.
   function handleSkip() {
     if (!canSkip) return;
     allTimers.current.forEach(clearTimeout);
     allTimers.current = [];
+    setFlights([]);
     if (historyRecordedForRound.current !== round) {
       historyRecordedForRound.current = round;
       dispatch({ type: 'RECORD_HISTORY' });
@@ -496,20 +559,19 @@ function App() {
                 playerSlots={playerSlots}
                 aiSlots={aiSlots}
                 aiHand={aiHand}
-                phase={phase}
                 revealStep={revealStep}
                 selectedCardId={selectedCardId}
                 onSlotClick={handleSlotClick}
                 placementActive={placementActive}
                 playerStackCount={playerStack.length}
                 aiStackCount={aiStack.length}
+                playerDiscardCount={playerDiscard.length}
+                aiDiscardCount={aiDiscard.length}
                 onShuffleStack={handleShuffleStack}
                 canShuffle={canShuffle}
                 dragonOverlayOwner={dragonOverlayOwner}
                 devMode={devMode}
-                selectedAiCardId={selectedAiCardId}
-                onAiCardClick={handleAiCardClick}
-                onAiSlotClick={handleAiSlotClick}
+                registerRef={registerRef}
               />
               <Hand
                 hand={playerHand}
@@ -522,6 +584,8 @@ function App() {
         </div>
 
       </div>
+
+      <CardFlightOverlay flights={flights} durationMs={RETURN_FLIGHT_MS} />
     </>
   );
 }

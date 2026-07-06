@@ -8,6 +8,7 @@ import type {
   BoardSlots,
   AIDifficulty,
   RoundHistoryEntry,
+  RoundResolution,
 } from '../types/game';
 import {
   HAND_SIZE,
@@ -58,6 +59,8 @@ function makeInitialState(difficulty: AIDifficulty = 'random'): GameState {
     },
 
     roundHistory: [],
+    playerDiscard: [],
+    aiDiscard: [],
     pendingResolution: null,
     pendingCascade: null,
     devMode: false,
@@ -66,26 +69,12 @@ function makeInitialState(difficulty: AIDifficulty = 'random'): GameState {
 }
 
 // [BLOCK: Action Types]
-// AI_PLACE_CARDS and CONFIRM_PLACEMENT replace the old single
-// 'PLACE_AI_CARDS' action. Splitting them lets the AI fill its slots
-// automatically (via a timer in App.tsx) while phase stays 'placement' —
-// the phase only advances to 'reveal' once the player explicitly confirms,
-// and only once both sides have placed (see CONFIRM_PLACEMENT below).
-//
-// AI_PLACE_SINGLE_CARD and AI_REMOVE_CARD are Dev Test Mode-only additions
-// (see dev-test-mode-plan.md) — they let Django manually recall one of the
-// AI's already-placed cards back to its hand, then manually place a
-// (possibly different) card from that same hand into the now-empty slot.
-// Both are gated on state.devMode in the reducer itself, not just hidden in
-// the UI, so they can never affect normal play even if mis-dispatched.
 export type GameAction =
   | { type: 'DRAW_CARDS' }
   | { type: 'PLACE_CARD'; slotKey: SlotKey; card: Card }
   | { type: 'REMOVE_CARD'; slotKey: SlotKey }
-  | { type: 'AI_PLACE_CARDS'; placements: Record<SlotKey, Card> }
-  | { type: 'AI_PLACE_SINGLE_CARD'; slotKey: SlotKey; card: Card }
-  | { type: 'AI_REMOVE_CARD'; slotKey: SlotKey }
-  | { type: 'CONFIRM_PLACEMENT' }
+  | { type: 'PLACE_AI_CARDS'; placements: Record<SlotKey, Card> }
+  | { type: 'START_REVEAL' }
   | { type: 'REVEAL_ROUND' }
   | { type: 'RECORD_HISTORY' }
   | { type: 'NEXT_ROUND' }
@@ -175,17 +164,15 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    // -- AI places its 3 cards automatically, fired by App.tsx's 2s
-    //    placement timer (not by the player's Play click). Fills aiSlots
-    //    only — phase stays 'placement' so the player can keep
-    //    placing/re-placing their own cards up until they hit Play.
-    //    Guarded on NO aiSlot having a card yet (rather than "not all 3
-    //    filled") so that if Dev Test Mode manually places a card into an
-    //    AI slot before the 2s timer fires, this won't overwrite it with a
-    //    stale placements object computed from the pre-manual-edit hand.
-    case 'AI_PLACE_CARDS': {
+    // -- AI places its 3 cards. Now fires on its own ~2s-after-round-start
+    //    timer (see App.tsx) rather than only in response to the player's
+    //    confirm click — so it no longer requires the player's slots to be
+    //    filled, and no longer advances phase itself. Guarded against
+    //    double-firing for a round that's already placed (defensive; the
+    //    timer that dispatches this already guards per-round via a ref).
+    case 'PLACE_AI_CARDS': {
       if (state.phase !== 'placement') return state;
-      if (SLOT_KEYS.some((k) => state.aiSlots[k].card !== null)) return state;
+      if (allSlotsPlaced(state.aiSlots)) return state;
 
       const { placements } = action;
       const aiSlots: BoardSlots = { ...state.aiSlots };
@@ -205,61 +192,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    // -- [Dev Test Mode] Manually place one card from the AI's hand into
-    //    one empty AI slot. Dev-only (see dev-test-mode-plan.md) — used
-    //    after AI_REMOVE_CARD recalls a slot, or to fill a slot the 2s
-    //    auto-placement timer hasn't reached yet. Does not touch phase;
-    //    App.tsx's canConfirm still requires all 3 AI slots filled before
-    //    Play unlocks, so this alone never skips ahead.
-    case 'AI_PLACE_SINGLE_CARD': {
-      if (!state.devMode) return state;
-      if (state.phase !== 'placement') return state;
-
-      const { slotKey, card } = action;
-      if (state.aiSlots[slotKey].card !== null) return state;
-      if (!state.aiHand.find((c) => c.id === card.id)) return state;
-
-      return {
-        ...state,
-        aiHand: state.aiHand.filter((c) => c.id !== card.id),
-        aiSlots: {
-          ...state.aiSlots,
-          [slotKey]: { key: slotKey, card, state: 'placed' },
-        },
-      };
-    }
-
-    // -- [Dev Test Mode] Recall a single AI-placed card back to the AI's
-    //    hand. Dev-only, placement-phase-only. Per design discussion: this
-    //    never triggers a re-fill — the 2s auto-placement timer (App.tsx)
-    //    only ever fires once per round (guarded there), so the slot stays
-    //    empty until AI_PLACE_SINGLE_CARD manually fills it. This also
-    //    correctly re-locks Play, since canConfirm requires all 3 AI slots
-    //    filled.
-    case 'AI_REMOVE_CARD': {
-      if (!state.devMode) return state;
-      if (state.phase !== 'placement') return state;
-
-      const { slotKey } = action;
-      const slot = state.aiSlots[slotKey];
-      if (!slot.card) return state;
-
-      return {
-        ...state,
-        aiHand: [...state.aiHand, slot.card],
-        aiSlots: {
-          ...state.aiSlots,
-          [slotKey]: { key: slotKey, card: null, state: 'empty' },
-        },
-      };
-    }
-
-    // -- Player confirms placement (Play button). Only reachable once both
-    //    the player's 3 slots AND the AI's 3 slots are filled — App.tsx's
-    //    canConfirm gates the button itself, this is the reducer-side
-    //    guard. Advances phase to 'reveal', which kicks off the reveal
-    //    animation effect in App.tsx.
-    case 'CONFIRM_PLACEMENT': {
+    // -- Advances placement -> reveal. Split out from PLACE_AI_CARDS (which
+    //    used to do both) now that the AI places on its own timer instead
+    //    of in response to this moment — this is the player's Play click,
+    //    gated on BOTH sides having placed (App.tsx's canConfirm mirrors
+    //    this same double-check to keep the button disabled until the AI
+    //    has actually placed).
+    case 'START_REVEAL': {
       if (state.phase !== 'placement') return state;
       if (!allSlotsPlaced(state.playerSlots)) return state;
       if (!allSlotsPlaced(state.aiSlots)) return state;
@@ -291,30 +230,45 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       const dragonPlayed = roundHasDragon(resolution);
       const cascade = resolveCascade(resolution, dragonPlayed);
 
-      // Apply raw lane outcomes to slot states first...
+      // [SUB-BLOCK: Cascade Relabeling]
+      // resolveCascade() above still reads the RAW resolution — it needs
+      // 'won' labels intact to find lane-winners via collectWonEntries —
+      // so this relabeling happens strictly AFTER that call, never before.
+      // Any lane a cascade fight overrode gets its outcome flipped from
+      // 'won' to 'cascaded': mechanically identical to 'lost' for survivor
+      // cycling (see combat.ts's getSurvivors, which only ever counts
+      // 'won'/'tied'), but reads correctly as "won its matchup, then fell
+      // in the cascade" rather than a plain loss (see types/game.ts's
+      // CombatOutcome doc comment). This relabeled object becomes the
+      // SINGLE version of this round's resolution from here on — stored in
+      // pendingResolution and read by RECORD_HISTORY, NEXT_ROUND, and
+      // App.tsx's return-flight builder alike, so none of them need to
+      // separately cross-reference cascade.overrides anymore.
+      const cascadedPlayerKeys = new Set(
+        cascade.overrides.filter((o) => o.owner === 'player').map((o) => o.slotKey)
+      );
+      const cascadedAiKeys = new Set(
+        cascade.overrides.filter((o) => o.owner === 'ai').map((o) => o.slotKey)
+      );
+
+      const resolvedWithCascade: RoundResolution = { ...resolution };
+      for (const key of SLOT_KEYS) {
+        const r = resolution[key];
+        resolvedWithCascade[key] = {
+          ...r,
+          player: cascadedPlayerKeys.has(key) ? 'cascaded' : r.player,
+          ai: cascadedAiKeys.has(key) ? 'cascaded' : r.ai,
+        };
+      }
+
+      // Apply the (now cascade-aware) lane outcomes to slot states.
       const playerSlots: BoardSlots = { ...state.playerSlots };
       const aiSlots: BoardSlots = { ...state.aiSlots };
 
       for (const key of SLOT_KEYS) {
-        const { player, ai } = resolution[key];
+        const { player, ai } = resolvedWithCascade[key];
         playerSlots[key] = { ...playerSlots[key], state: player };
         aiSlots[key] = { ...aiSlots[key], state: ai };
-      }
-
-      // ...then flip any cascade losers on top — 'cascaded' rather than
-      // plain 'lost', so the UI can distinguish "won this lane's RPS
-      // matchup but got cut down in the cascade" from "lost the lane
-      // outright." Mechanically identical to 'lost' for scoring/survivor
-      // cycling (see getSurvivors in combat.ts — 'cascaded' is not 'won'
-      // or 'tied', so it's excluded from survivors same as 'lost' always
-      // was). (No-op on Dragon rounds — resolveCascade never triggers for
-      // them.)
-      for (const o of cascade.overrides) {
-        if (o.owner === 'player') {
-          playerSlots[o.slotKey] = { ...playerSlots[o.slotKey], state: 'cascaded' };
-        } else {
-          aiSlots[o.slotKey] = { ...aiSlots[o.slotKey], state: 'cascaded' };
-        }
       }
 
       // Update Smart AI pattern tracking — Dragon plays are excluded
@@ -346,7 +300,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         playerSlots,
         aiSlots,
-        pendingResolution: resolution,
+        pendingResolution: resolvedWithCascade,
         pendingCascade: cascade,
         ai: {
           ...state.ai,
@@ -362,24 +316,12 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     //    cascade already computed by REVEAL_ROUND (not recomputed).
     //    Deferred until after the reveal animation plays so history
     //    doesn't spoil outcomes early (see ROADMAP.md history-timing note).
-    //    The stored `resolutions` reflect the POST-cascade outcome (any
-    //    cascade-overridden lane reads as 'cascaded', not the raw 'won'
-    //    resolveRound() originally gave it) — this was a display gap
-    //    before: history used to show a cascaded-away lane as a plain
-    //    "Win" even though the card was actually discarded.
     case 'RECORD_HISTORY': {
       if (!state.pendingResolution) return state;
 
       const resolution = state.pendingResolution;
       const cascade = state.pendingCascade;
       const dragonInfo = getDragonInfo(resolution);
-
-      const cascadedPlayerSlots = new Set(
-        (cascade?.overrides ?? []).filter((o) => o.owner === 'player').map((o) => o.slotKey)
-      );
-      const cascadedAiSlots = new Set(
-        (cascade?.overrides ?? []).filter((o) => o.owner === 'ai').map((o) => o.slotKey)
-      );
 
       const historyEntry: RoundHistoryEntry = {
         round: state.round,
@@ -394,18 +336,9 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           right:  state.aiSlots.right.card!.type,
         },
         resolutions: {
-          left: {
-            player: cascadedPlayerSlots.has('left') ? 'cascaded' : resolution.left.player,
-            ai:     cascadedAiSlots.has('left')     ? 'cascaded' : resolution.left.ai,
-          },
-          center: {
-            player: cascadedPlayerSlots.has('center') ? 'cascaded' : resolution.center.player,
-            ai:     cascadedAiSlots.has('center')     ? 'cascaded' : resolution.center.ai,
-          },
-          right: {
-            player: cascadedPlayerSlots.has('right') ? 'cascaded' : resolution.right.player,
-            ai:     cascadedAiSlots.has('right')     ? 'cascaded' : resolution.right.ai,
-          },
+          left:   { player: resolution.left.player,   ai: resolution.left.ai },
+          center: { player: resolution.center.player, ai: resolution.center.ai },
+          right:  { player: resolution.right.player,  ai: resolution.right.ai },
         },
         playerCardsAfter: countCards(state, 'player'),
         aiCardsAfter: countCards(state, 'ai'),
@@ -427,7 +360,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    // -- Cycle survivors to stack bottom, reset slots, advance round.
+    // -- Cycle survivors to stack bottom, route everyone else to that
+    //    side's discard pile, reset slots, advance round.
     //    Uses the stored resolution from REVEAL_ROUND (not a fresh
     //    resolveRound() call — see GameState.pendingResolution), then
     //    strips out any card the cascade discarded on top of that.
@@ -435,27 +369,32 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       if (state.phase !== 'resolution') return state;
       if (!state.pendingResolution) return state;
 
-      const { playerSurvivors, aiSurvivors } = getSurvivors(state.pendingResolution);
+      // getSurvivors() only ever counts 'won'/'tied' outcomes. Since
+      // pendingResolution is now the cascade-relabeled version built in
+      // REVEAL_ROUND's Cascade Relabeling sub-block, any lane a cascade
+      // fight overrode already reads 'cascaded' here, not 'won' — so it's
+      // excluded automatically, with no separate cross-reference against
+      // pendingCascade.overrides needed anymore.
+      const resolution = state.pendingResolution;
+      const {
+        playerSurvivors: finalPlayerSurvivors,
+        aiSurvivors: finalAiSurvivors,
+      } = getSurvivors(resolution);
 
-      let finalPlayerSurvivors = playerSurvivors;
-      let finalAiSurvivors = aiSurvivors;
+      // [SUB-BLOCK: Discard routing]
+      // Everything that was placed this round but isn't a final survivor
+      // goes to that side's discard pile — covers lost, tied-lost, dragon,
+      // and cascade-overridden won cards in one pass, without touching
+      // combat/survivor logic above. Purely presentational bookkeeping
+      // (see GameState.playerDiscard/aiDiscard doc comment).
+      const placedPlayerCards = SLOT_KEYS.map((k) => resolution[k].playerCard);
+      const placedAiCards = SLOT_KEYS.map((k) => resolution[k].aiCard);
 
-      if (state.pendingCascade) {
-        const resolution = state.pendingResolution;
-        const overriddenPlayerIds = new Set(
-          state.pendingCascade.overrides
-            .filter((o) => o.owner === 'player')
-            .map((o) => resolution[o.slotKey].playerCard.id)
-        );
-        const overriddenAiIds = new Set(
-          state.pendingCascade.overrides
-            .filter((o) => o.owner === 'ai')
-            .map((o) => resolution[o.slotKey].aiCard.id)
-        );
+      const survivorPlayerIds = new Set(finalPlayerSurvivors.map((c) => c.id));
+      const survivorAiIds = new Set(finalAiSurvivors.map((c) => c.id));
 
-        finalPlayerSurvivors = playerSurvivors.filter((c) => !overriddenPlayerIds.has(c.id));
-        finalAiSurvivors = aiSurvivors.filter((c) => !overriddenAiIds.has(c.id));
-      }
+      const newPlayerDiscards = placedPlayerCards.filter((c) => !survivorPlayerIds.has(c.id));
+      const newAiDiscards = placedAiCards.filter((c) => !survivorAiIds.has(c.id));
 
       const playerStack = [...state.playerStack, ...finalPlayerSurvivors];
       const aiStack = [...state.aiStack, ...finalAiSurvivors];
@@ -481,6 +420,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         aiStack,
         aiHand: state.aiHand,
         aiSlots: makeEmptySlots(),
+        playerDiscard: [...state.playerDiscard, ...newPlayerDiscards],
+        aiDiscard: [...state.aiDiscard, ...newAiDiscards],
         pendingResolution: null,
         pendingCascade: null,
         result,

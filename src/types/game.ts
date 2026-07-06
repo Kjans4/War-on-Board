@@ -30,24 +30,27 @@ export type SlotState =
   | 'lost'       // card discarded — lost its lane outright, was destroyed
                   // by the opponent's Dragon, or was cancelled in a
                   // both-play-Dragon lane
-  | 'cascaded'   // card WON its own lane's RPS matchup but was then
-                  // discarded by a cascade fight (see CascadeResult in
-                  // combat.ts). Kept distinct from plain 'lost' purely so
-                  // the UI can show "cascaded" instead of "loss" — for
-                  // scoring and survivor cycling it behaves exactly like
-                  // 'lost' (never returns to stack; see getSurvivors,
-                  // which only returns 'won'/'tied' cards).
   | 'tied'       // same-type fresh tie — card exhausted, survived, withdraws
                   // from the cascade entirely
   | 'tied-lost'  // exhausted vs exhausted — both discarded, withdraws from
                   // the cascade entirely
-  | 'dragon';    // the Dragon's own lane, for its owner only — a distinct
+  | 'dragon'     // the Dragon's own lane, for its owner only — a distinct
                   // "win" from a plain 'won': the card is consumed forever
                   // (never returns to stack, same as 'lost' for cycling
                   // purposes) but the outcome is a deliberate wipe, not a
                   // loss. Kept separate from 'lost' purely so it reads
                   // correctly in the UI instead of looking like the
                   // Dragon itself lost.
+  | 'cascaded';  // won its lane's RPS matchup outright, but was then
+                  // eliminated in the post-resolution cascade fight (see
+                  // combat.ts's resolveCascade / CascadeResult). Mechanically
+                  // identical to 'lost' for survivor cycling — either way the
+                  // card is discarded, never returns to stack — but kept
+                  // distinct purely so the board and round history can show
+                  // "won, then fell in the cascade" instead of a plain,
+                  // confusing loss. Computed once in useGameState.ts's
+                  // REVEAL_ROUND (see its Cascade Relabeling sub-block) and
+                  // carried in pendingResolution from there on.
 
 export interface Slot {
   key: SlotKey;
@@ -58,10 +61,6 @@ export interface Slot {
 export type BoardSlots = Record<SlotKey, Slot>;
 
 // [BLOCK: Combat]
-// CombatOutcome mirrors SlotState's per-side outcome vocabulary. 'cascaded'
-// is a display-only refinement RECORD_HISTORY applies on top of the raw
-// resolveSlot() outcome (which only ever produces 'won'/'lost'/'tied'/
-// 'tied-lost'/'dragon' — see combat.ts) once cascade overrides are known.
 export type CombatOutcome = 'won' | 'lost' | 'tied' | 'tied-lost' | 'dragon' | 'cascaded';
 
 export interface SlotResolution {
@@ -112,8 +111,8 @@ export interface CascadeResult {
   // single winner may still stand by default.
   triggered: boolean;
   // Cards that won their own lane but were discarded by a cascade fight —
-  // consumers must flip these from 'won' to 'lost' (display: 'cascaded')
-  // for slot state, scoring, and survivor cycling.
+  // consumers must flip these from 'won' to 'lost' for slot state, scoring,
+  // and survivor cycling.
   overrides: CascadeCardRef[];
   // Card(s) left standing once the cascade finishes (or halts on a tie).
   survivingSlots: CascadeCardRef[];
@@ -142,9 +141,6 @@ export interface RoundHistoryEntry {
   round: number;
   playerSlots: Record<SlotKey, CardType>;
   aiSlots: Record<SlotKey, CardType>;
-  // Post-cascade outcome per lane, per side — i.e. this already reflects
-  // any cascade override as 'cascaded' rather than the raw pre-cascade
-  // 'won'/'lost' from resolveRound(). See useGameState.ts's RECORD_HISTORY.
   resolutions: Record<SlotKey, { player: CombatOutcome; ai: CombatOutcome }>;
   playerCardsAfter: number; // stack + hand count after round
   aiCardsAfter: number;
@@ -195,6 +191,16 @@ export interface GameState {
   // History
   roundHistory: RoundHistoryEntry[];
 
+  // [BLOCK: Discard Piles]
+  // Purely presentational bookkeeping, added for the discard-pile
+  // animation/UI (see App.tsx's buildReturnFlights + Board.tsx's
+  // DiscardPile). Cards that were NOT returned to the stack at NEXT_ROUND
+  // (lost, tied-lost, dragon, or cascade-overridden) land here instead.
+  // Doesn't feed back into any combat/AI logic — a card here is simply
+  // gone from play, exactly as before this field existed.
+  playerDiscard: Card[];
+  aiDiscard: Card[];
+
   // [BLOCK: Pending Resolution / Cascade]
   // Both set once by REVEAL_ROUND (the single call to resolveRound() and
   // resolveCascade() for a given round) and read by both RECORD_HISTORY
@@ -204,6 +210,11 @@ export interface GameState {
   // second time on the same card objects would re-evaluate an
   // already-exhausted pair incorrectly. Both are cleared back to null once
   // NEXT_ROUND consumes them.
+  //
+  // App.tsx's return-flight animation reads these too (via a stateRef, at
+  // timer-fire time) purely to decide each card's destination — it never
+  // recomputes resolveRound/resolveCascade itself, for the same
+  // no-double-mutation reason.
   pendingResolution: RoundResolution | null;
   pendingCascade: CascadeResult | null;
 

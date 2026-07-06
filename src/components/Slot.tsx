@@ -16,20 +16,20 @@ interface SlotProps {
   // final outcome but each slot flips up one at a time.
   visuallyFaceDown?: boolean; // overrides the default face-down inference
   showOutcome?: boolean;      // gates the outcome badge + glow separately
+  // Exposes this slot's DOM node to the parent (Board -> App) so the
+  // discard/return flight animation can measure its position as a flight
+  // source at round-end — see App.tsx's buildReturnFlights. Purely a
+  // measurement hook; has no visual effect on its own.
+  elRef?: (el: HTMLDivElement | null) => void;
 }
 
 // [BLOCK: Outcome Config]
-// 'cascaded' is visually distinct from 'lost' — the card won its own
-// lane's RPS matchup but was then discarded by a cascade fight (see
-// combat.ts's resolveCascade / useGameState.ts's REVEAL_ROUND override
-// application). Without this the player has no way to tell "I lost this
-// matchup outright" apart from "I won it, but the cascade took it anyway."
 const OUTCOME_CONFIG: Partial<Record<SlotType['state'], { label: string; className: string }>> = {
-  won:       { label: 'Win',      className: 'slot--won'       },
-  lost:      { label: 'Loss',     className: 'slot--lost'      },
-  cascaded:  { label: 'Cascaded', className: 'slot--cascaded'  },
-  tied:      { label: 'Tie',      className: 'slot--tied'      },
-  'tied-lost': { label: 'Spent',  className: 'slot--tied-lost' },
+  won:       { label: 'Win',      className: 'slot--won'      },
+  lost:      { label: 'Loss',     className: 'slot--lost'     },
+  cascaded:  { label: 'Cascaded', className: 'slot--cascaded' },
+  tied:      { label: 'Tie',      className: 'slot--tied'     },
+  'tied-lost': { label: 'Spent', className: 'slot--tied-lost' },
 };
 
 // [BLOCK: Component]
@@ -40,6 +40,7 @@ export function Slot({
   clickable = false,
   visuallyFaceDown,
   showOutcome,
+  elRef,
 }: SlotProps) {
   const outcome = OUTCOME_CONFIG[slot.state];
   const isEmpty = slot.state === 'empty';
@@ -58,6 +59,7 @@ export function Slot({
 
   return (
     <div
+      ref={elRef}
       className={clsx(
         'slot',
         `slot--${owner}`,
@@ -138,10 +140,7 @@ export const slotStyles = `
 
   .slot--won       { border-color: #52c87a; box-shadow: 0 0 12px rgba(82,200,122,0.3); }
   .slot--lost      { border-color: #e05252; box-shadow: 0 0 12px rgba(224,82,82,0.3); }
-  /* Distinct from --lost: purple/violet reads as "taken down in a fight",
-     not "beaten outright" — same family as the Dragon's gold treatment
-     elsewhere, just a different hue so it doesn't get confused with wins. */
-  .slot--cascaded   { border-color: #9d6fe0; box-shadow: 0 0 12px rgba(157,111,224,0.35); }
+  .slot--cascaded  { border-color: #9d6fe0; box-shadow: 0 0 12px rgba(157,111,224,0.3); }
   .slot--tied      { border-color: #e0a030; box-shadow: 0 0 12px rgba(224,160,48,0.3); }
   .slot--tied-lost { border-color: #666;    box-shadow: none; opacity: 0.6; }
 
