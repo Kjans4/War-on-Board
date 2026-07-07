@@ -4,15 +4,13 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useGameState } from './state/useGameState';
 import { getAIPlacement } from './logic/ai';
 import { findDragonPlacement } from './logic/combat';
-import { Board, boardStyles } from './components/Board';
+import { Board } from './components/Board';
 import type { RevealStep } from './components/Board';
-import { Hand, handStyles } from './components/Hand';
-import { RoundCounter, PlayFooter, hudStyles } from './components/HUD';
-import { RoundHistory, roundHistoryStyles } from './components/RoundHistory';
-import { MainMenu, mainMenuStyles } from './components/MainMenu';
-import { cardStyles } from './components/Card';
-import { slotStyles } from './components/Slot';
-import { CardFlightOverlay, cardFlightOverlayStyles } from './components/CardFlightOverlay';
+import { Hand } from './components/Hand';
+import { RoundCounter, PlayFooter } from './components/HUD';
+import { RoundHistory } from './components/RoundHistory';
+import { MainMenu } from './components/MainMenu';
+import { CardFlightOverlay } from './components/CardFlightOverlay';
 import type { FlightItem } from './components/CardFlightOverlay';
 import type {
   Card as CardType,
@@ -21,90 +19,7 @@ import type {
   RoundResolution,
 } from './types/game';
 import { SLOT_KEYS } from './types/game';
-
-// [BLOCK: Combined Component Styles]
-const combinedStyles = [
-  cardStyles, slotStyles, boardStyles, handStyles,
-  hudStyles, roundHistoryStyles, mainMenuStyles, cardFlightOverlayStyles,
-].join('\n');
-
-// [BLOCK: App Shell Styles]
-const appStyles = `
-  .app-shell {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    height: 100svh;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  .app-sidebar {
-    width: 200px;
-    flex-shrink: 0;
-    min-height: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    padding: 20px 14px;
-    border-right: 1px solid var(--border, #222);
-    gap: 0;
-    box-sizing: border-box;
-  }
-
-  .app-center {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 18px;
-    padding: 36px 16px 16px;
-  }
-
-  .app-title {
-    position: absolute;
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 18px;
-    font-weight: 700;
-    color: #555;
-    margin: 0;
-    letter-spacing: 0.04em;
-  }
-
-  .app-gameover {
-    text-align: center;
-    padding: 24px;
-  }
-
-  .app-gameover h2 {
-    color: #f0c040;
-    margin: 0 0 8px;
-  }
-
-  .app-gameover p {
-    color: #ccc;
-    font-size: 16px;
-  }
-
-  /* [BLOCK: Dev Mode Badge] */
-  .app-dev-badge {
-    position: absolute;
-    top: 14px;
-    right: 16px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #52b0e0;
-    border: 1px solid #52b0e0;
-    border-radius: 6px;
-    padding: 3px 8px;
-  }
-`;
+import styles from './styles/App.module.css';
 
 // [BLOCK: Reveal + Auto-Transition Timings (ms)]
 // Base per-slot stagger timings — used verbatim for non-Dragon rounds, and
@@ -504,32 +419,25 @@ function App() {
   // [BLOCK: Render — Main Menu]
   if (!started) {
     return (
-      <>
-        <style>{combinedStyles}</style>
-        <style>{appStyles}</style>
-        <div className="app-shell">
-          <MainMenu
-            onSelectRandom={() => handleStartGame(false)}
-            onSelectDevTest={() => handleStartGame(true)}
-          />
-        </div>
-      </>
+      <div className={styles['app-shell']}>
+        <MainMenu
+          onSelectRandom={() => handleStartGame(false)}
+          onSelectDevTest={() => handleStartGame(true)}
+        />
+      </div>
     );
   }
 
   // [BLOCK: Render — Game]
   return (
     <>
-      <style>{combinedStyles}</style>
-      <style>{appStyles}</style>
+      <h1 className={styles['app-title']}>War on Board</h1>
+      {devMode && <span className={styles['app-dev-badge']}>Dev Test</span>}
 
-      <h1 className="app-title">War on Board</h1>
-      {devMode && <span className="app-dev-badge">Dev Test</span>}
-
-      <div className="app-shell">
+      <div className={styles['app-shell']}>
 
         {/* [SUB-BLOCK: Sidebar] */}
-        <div className="app-sidebar">
+        <div className={styles['app-sidebar']}>
           <RoundCounter round={round} />
           <RoundHistory history={roundHistory} />
           <PlayFooter
@@ -543,9 +451,9 @@ function App() {
         </div>
 
         {/* [SUB-BLOCK: Center — Battlefield + Hand] */}
-        <div className="app-center">
+        <div className={styles['app-center']}>
           {phase === 'gameover' ? (
-            <div className="app-gameover">
+            <div className={styles['app-gameover']}>
               <h2>Game Over</h2>
               <p>
                 {result === 'player' && 'You win!'}

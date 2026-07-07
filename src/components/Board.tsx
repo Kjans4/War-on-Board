@@ -6,6 +6,7 @@ import type { BoardSlots, SlotKey, Card as CardType, Owner } from '../types/game
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
+import styles from '../styles/Board.module.css';
 
 // [BLOCK: Reveal Step Type]
 // Exported so App.tsx can type its local animation state.
@@ -132,10 +133,10 @@ function StackIcon({
   elRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
-    <div className="stack-col" ref={elRef}>
-      <span className="stack-col__count">{count}</span>
-      <div className="stack-col__icon" aria-hidden="true" />
-      <span className="stack-col__label">{label}</span>
+    <div className={styles['stack-col']} ref={elRef}>
+      <span className={styles['stack-col__count']}>{count}</span>
+      <div className={styles['stack-col__icon']} aria-hidden="true" />
+      <span className={styles['stack-col__label']}>{label}</span>
     </div>
   );
 }
@@ -152,10 +153,10 @@ function DiscardPile({
   elRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
-    <div className="discard-col" ref={elRef}>
-      <span className="discard-col__count">{count}</span>
-      <div className="discard-col__icon" aria-hidden="true" />
-      <span className="discard-col__label">Discard</span>
+    <div className={styles['discard-col']} ref={elRef}>
+      <span className={styles['discard-col__count']}>{count}</span>
+      <div className={styles['discard-col__icon']} aria-hidden="true" />
+      <span className={styles['discard-col__label']}>Discard</span>
     </div>
   );
 }
@@ -198,10 +199,10 @@ export function Board({
   const aiEditable = devMode && placementActive && !aiHasPlaced;
 
   return (
-    <div className="battlefield-row">
+    <div className={styles['battlefield-row']}>
 
       {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row] */}
-      <div className="stack-col-wrap stack-col-wrap--ai">
+      <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--ai'])}>
         <StackIcon
           count={aiStackCount}
           label="Opponent"
@@ -214,16 +215,16 @@ export function Board({
       </div>
 
       {/* [SUB-BLOCK: Battlefield] */}
-      <div className="battlefield">
+      <div className={styles.battlefield}>
 
         {/* Opponent hand — face-down normally; face-up in Dev Test Mode
             (Phase 1) so the person can see what the AI is holding before
             it places. While aiEditable, cards are also selectable — click
             one, then click an empty opponent slot to place it there,
             exactly mirroring the player's own hand -> slot flow. */}
-        <div className="battlefield__opp-hand" aria-label={`Opponent hand: ${aiHand.length} cards`}>
+        <div className={styles['battlefield__opp-hand']} aria-label={`Opponent hand: ${aiHand.length} cards`}>
           {aiHand.map((card, i) => (
-            <div key={card.id} className="battlefield__opp-card-wrap" style={fanStyle(i, aiHand.length)}>
+            <div key={card.id} className={styles['battlefield__opp-card-wrap']} style={fanStyle(i, aiHand.length)}>
               <Card
                 card={card}
                 faceDown={!devMode}
@@ -235,9 +236,9 @@ export function Board({
         </div>
 
         {/* Opponent slots */}
-        <div className="battlefield__row battlefield__row--ai">
-          <span className="battlefield__row-label">Opponent</span>
-          <div className="battlefield__slots">
+        <div className={clsx(styles.battlefield__row, styles['battlefield__row--ai'])}>
+          <span className={styles['battlefield__row-label']}>Opponent</span>
+          <div className={styles.battlefield__slots}>
             {SLOT_KEYS.map((key) => {
               const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!aiSlots[key].card, !devMode);
               const aiSlot = aiSlots[key];
@@ -259,13 +260,13 @@ export function Board({
         </div>
 
         {/* Divider */}
-        <div className="battlefield__divider" aria-hidden="true">
-          <span className="battlefield__divider-label">vs</span>
+        <div className={styles.battlefield__divider} aria-hidden="true">
+          <span className={styles['battlefield__divider-label']}>vs</span>
         </div>
 
         {/* Player slots */}
-        <div className="battlefield__row battlefield__row--player">
-          <div className="battlefield__slots">
+        <div className={clsx(styles.battlefield__row, styles['battlefield__row--player'])}>
+          <div className={styles.battlefield__slots}>
             {SLOT_KEYS.map((key) => {
               const slot = playerSlots[key];
               const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!slot.card, false);
@@ -284,26 +285,26 @@ export function Board({
               );
             })}
           </div>
-          <span className="battlefield__row-label">You</span>
+          <span className={styles['battlefield__row-label']}>You</span>
         </div>
 
         {/* [SUB-BLOCK: Dragon Attack overlay] */}
         {showDragonOverlay && (
           <div
             className={clsx(
-              'dragon-overlay',
-              dragonOverlayOwner === 'player' ? 'dragon-overlay--player' : 'dragon-overlay--ai',
+              styles['dragon-overlay'],
+              dragonOverlayOwner === 'player' ? styles['dragon-overlay--player'] : styles['dragon-overlay--ai'],
             )}
             role="status"
           >
-            <span className="dragon-overlay__text">Dragon Attack</span>
+            <span className={styles['dragon-overlay__text']}>Dragon Attack</span>
           </div>
         )}
 
       </div>
 
       {/* [SUB-BLOCK: Player Stack + Discard + Shuffle — right edge, floats toward player's row] */}
-      <div className="stack-col-wrap stack-col-wrap--player">
+      <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
         <StackIcon
           count={playerStackCount}
           label="You"
@@ -314,7 +315,7 @@ export function Board({
           elRef={(el) => registerRef?.('discard-player', el)}
         />
         <button
-          className="stack-col__shuffle"
+          className={styles['stack-col__shuffle']}
           onClick={onShuffleStack}
           disabled={!canShuffle}
           title="Shuffle your stack — breaks Smart AI's pattern read"
@@ -326,210 +327,3 @@ export function Board({
     </div>
   );
 }
-
-// [BLOCK: Battlefield Styles]
-export const boardStyles = `
-  .battlefield-row {
-    display: flex;
-    align-items: stretch;
-    justify-content: center;
-    gap: 28px;
-  }
-
-  .battlefield {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .battlefield__opp-hand {
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    min-height: 84px;
-    margin-bottom: 2px;
-  }
-
-  .battlefield__opp-card-wrap {
-    transform-origin: top center;
-  }
-
-  .battlefield__row {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .battlefield__row-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
-    color: #555;
-  }
-
-  .battlefield__row--player .battlefield__row-label { color: #6a9; }
-  .battlefield__row--ai     .battlefield__row-label { color: #a66; }
-
-  .battlefield__slots {
-    display: flex;
-    gap: 12px;
-  }
-
-  .battlefield__divider {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 4px;
-  }
-
-  .battlefield__divider::before,
-  .battlefield__divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: #222;
-  }
-
-  .battlefield__divider-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #333;
-    font-weight: 700;
-  }
-
-  /* Stack columns */
-  .stack-col-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .stack-col-wrap--ai     { align-self: flex-start; margin-top: 4px; }
-  .stack-col-wrap--player { align-self: flex-end;   margin-bottom: 4px; }
-
-  .stack-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .stack-col__count {
-    font-size: 20px;
-    font-weight: 700;
-    color: #ddd;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .stack-col__icon {
-    width: 46px;
-    height: 64px;
-    border-radius: 6px;
-    background: linear-gradient(135deg, #2a2a4a, #1a1a2e);
-    border: 2px solid #444;
-    box-shadow: 2px 2px 0 #161622, 4px 4px 0 #111;
-  }
-
-  .stack-col__label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #555;
-  }
-
-  .stack-col__shuffle {
-    padding: 6px 12px;
-    border-radius: 7px;
-    border: 1px solid #333;
-    background: transparent;
-    color: #777;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-    white-space: nowrap;
-  }
-
-  .stack-col__shuffle:disabled { opacity: 0.35; cursor: not-allowed; }
-  .stack-col__shuffle:not(:disabled):hover { border-color: #555; color: #bbb; }
-
-  /* Discard pile column */
-  .discard-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .discard-col__count {
-    font-size: 16px;
-    font-weight: 700;
-    color: #998;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .discard-col__icon {
-    width: 40px;
-    height: 56px;
-    border-radius: 6px;
-    background: linear-gradient(135deg, #3a2a2a, #221515);
-    border: 2px solid #4a3333;
-    box-shadow: 2px 2px 0 #1a1010;
-    opacity: 0.85;
-  }
-
-  .discard-col__label {
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #665;
-  }
-
-  /* [BLOCK: Dragon Attack Overlay] */
-  .dragon-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 100;
-    padding: 14px 36px;
-    border-radius: 10px;
-    pointer-events: none;
-    animation: dragon-overlay-pop 0.25s ease-out;
-  }
-
-  .dragon-overlay--player {
-    background: rgba(42, 36, 16, 0.92);
-    border: 2px solid #f0c040;
-    box-shadow: 0 0 28px rgba(240,192,64,0.45);
-  }
-
-  .dragon-overlay--ai {
-    background: rgba(42, 16, 16, 0.92);
-    border: 2px solid #e05252;
-    box-shadow: 0 0 28px rgba(224,82,82,0.45);
-  }
-
-  .dragon-overlay__text {
-    font-size: 22px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .dragon-overlay--player .dragon-overlay__text { color: #f0c040; }
-  .dragon-overlay--ai     .dragon-overlay__text { color: #e05252; }
-
-  @keyframes dragon-overlay-pop {
-    from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
-    to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  }
-`;

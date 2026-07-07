@@ -1,6 +1,7 @@
 // src/components/CardTypePicker.tsx
 
 import type { CardType } from '../types/game';
+import styles from '../styles/CardTypePicker.module.css';
 
 // [BLOCK: Dev Test Mode — Phase 3]
 // Shared popover used by both Hand.tsx (player hand) and Board.tsx (AI
@@ -34,22 +35,22 @@ interface CardTypePickerProps {
 export function CardTypePicker({ counts, onPick, onClose }: CardTypePickerProps) {
   return (
     <>
-      <div className="type-picker-backdrop" onClick={onClose} />
-      <div className="type-picker" role="menu" onClick={(e) => e.stopPropagation()}>
+      <div className={styles['type-picker-backdrop']} onClick={onClose} />
+      <div className={styles['type-picker']} role="menu" onClick={(e) => e.stopPropagation()}>
         {TYPES.map((type) => {
           const remaining = counts[type];
           const disabled = remaining <= 0;
           return (
             <button
               key={type}
-              className="type-picker__option"
+              className={styles['type-picker__option']}
               disabled={disabled}
               onClick={() => onPick(type)}
               role="menuitem"
             >
-              <span className="type-picker__symbol" aria-hidden="true">{TYPE_SYMBOL[type]}</span>
-              <span className="type-picker__label">{type}</span>
-              <span className="type-picker__count">{remaining} left</span>
+              <span className={styles['type-picker__symbol']} aria-hidden="true">{TYPE_SYMBOL[type]}</span>
+              <span className={styles['type-picker__label']}>{type}</span>
+              <span className={styles['type-picker__count']}>{remaining} left</span>
             </button>
           );
         })}
@@ -58,75 +59,6 @@ export function CardTypePicker({ counts, onPick, onClose }: CardTypePickerProps)
   );
 }
 
-// [BLOCK: Styles]
-export const cardTypePickerStyles = `
-  .type-picker-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 300;
-    background: transparent;
-  }
-
-  .type-picker {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 301;
-    display: flex;
-    flex-direction: column;
-    width: 150px;
-    background: #14141f;
-    border: 1px solid #333;
-    border-radius: 8px;
-    box-shadow: 0 10px 26px rgba(0,0,0,0.5);
-    overflow: hidden;
-    padding: 4px;
-  }
-
-  .type-picker__option {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    border: none;
-    border-radius: 5px;
-    background: transparent;
-    color: #ccc;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    text-align: left;
-    transition: background 0.15s;
-  }
-
-  .type-picker__option:not(:disabled):hover {
-    background: rgba(240,192,64,0.1);
-    color: #f0c040;
-  }
-
-  .type-picker__option:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-
-  .type-picker__symbol {
-    font-size: 13px;
-    flex-shrink: 0;
-  }
-
-  .type-picker__label {
-    flex: 1;
-  }
-
-  .type-picker__count {
-    font-size: 9px;
-    color: #777;
-    font-weight: 500;
-    white-space: nowrap;
-  }
-`;
-
 // [BLOCK: Edit Affordance Button]
 // Small "✎" control overlaid on a hand card's corner, shown only in dev
 // mode. Kept as a separate exported piece (rather than baked into Hand/
@@ -134,7 +66,7 @@ export const cardTypePickerStyles = `
 export function CardEditButton({ onClick }: { onClick: () => void }) {
   return (
     <button
-      className="card-edit-btn"
+      className={styles['card-edit-btn']}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -146,30 +78,3 @@ export function CardEditButton({ onClick }: { onClick: () => void }) {
     </button>
   );
 }
-
-export const cardEditButtonStyles = `
-  .card-edit-btn {
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    z-index: 10;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    border: 1px solid #52b0e0;
-    background: #14141f;
-    color: #52b0e0;
-    font-size: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
-  }
-
-  .card-edit-btn:hover {
-    background: #52b0e0;
-    color: #0d0d1a;
-  }
-`;

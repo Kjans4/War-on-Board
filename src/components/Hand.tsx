@@ -6,6 +6,7 @@ import type { Card as CardType, CardType as CardTypeUnion } from '../types/game'
 import { Card } from './Card';
 import { CardTypePicker, CardEditButton } from './CardTypePicker';
 import { getStackTypeCounts } from '../logic/deck';
+import styles from '../styles/Hand.module.css';
 
 // [BLOCK: Props]
 // Phase 4 layout redesign: this component is now ONLY the fanned row of
@@ -64,12 +65,12 @@ export function Hand({
   const stackCounts = canEdit ? getStackTypeCounts(stack) : null;
 
   return (
-    <div className="hand">
-      <div className="hand__cards">
+    <div className={styles.hand}>
+      <div className={styles.hand__cards}>
         {hand.map((card, i) => (
           <div
             key={card.id}
-            className="hand__card-wrap"
+            className={styles['hand__card-wrap']}
             style={{ ...fanStyle(i, hand.length), position: 'relative' }}
           >
             <Card
@@ -99,41 +100,8 @@ export function Hand({
             )}
           </div>
         ))}
-        {hand.length === 0 && <p className="hand__empty">No cards in hand</p>}
+        {hand.length === 0 && <p className={styles.hand__empty}>No cards in hand</p>}
       </div>
     </div>
   );
 }
-
-// [BLOCK: Styles]
-export const handStyles = `
-  .hand {
-    display: flex;
-    justify-content: center;
-    padding: 4px 0 10px;
-  }
-
-  .hand__cards {
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    min-height: 100px;
-  }
-
-  .hand__card-wrap {
-    position: relative;
-    transition: transform 0.15s ease;
-  }
-
-  .hand__card-wrap:hover {
-    transform: translateY(-10px) !important;
-    z-index: 50 !important;
-  }
-
-  .hand__empty {
-    color: #555;
-    font-size: 13px;
-    font-style: italic;
-    margin: 0;
-  }
-`;

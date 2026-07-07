@@ -1,0 +1,205 @@
+/* src/styles/Board.module.css */
+
+.battlefield-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 28px;
+}
+
+.battlefield {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.battlefield__opp-hand {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 84px;
+  margin-bottom: 2px;
+}
+
+.battlefield__opp-card-wrap {
+  transform-origin: top center;
+}
+
+.battlefield__row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.battlefield__row-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  color: #555;
+}
+
+.battlefield__row--player .battlefield__row-label { color: #6a9; }
+.battlefield__row--ai     .battlefield__row-label { color: #a66; }
+
+.battlefield__slots {
+  display: flex;
+  gap: 12px;
+}
+
+.battlefield__divider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.battlefield__divider::before,
+.battlefield__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #222;
+}
+
+.battlefield__divider-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #333;
+  font-weight: 700;
+}
+
+/* Stack columns */
+.stack-col-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.stack-col-wrap--ai     { align-self: flex-start; margin-top: 4px; }
+.stack-col-wrap--player { align-self: flex-end;   margin-bottom: 4px; }
+
+.stack-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stack-col__count {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ddd;
+  font-variant-numeric: tabular-nums;
+}
+
+.stack-col__icon {
+  width: 46px;
+  height: 64px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #2a2a4a, #1a1a2e);
+  border: 2px solid #444;
+  box-shadow: 2px 2px 0 #161622, 4px 4px 0 #111;
+}
+
+.stack-col__label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #555;
+}
+
+.stack-col__shuffle {
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: 1px solid #333;
+  background: transparent;
+  color: #777;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.stack-col__shuffle:disabled { opacity: 0.35; cursor: not-allowed; }
+.stack-col__shuffle:not(:disabled):hover { border-color: #555; color: #bbb; }
+
+/* Discard pile column */
+.discard-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.discard-col__count {
+  font-size: 16px;
+  font-weight: 700;
+  color: #998;
+  font-variant-numeric: tabular-nums;
+}
+
+.discard-col__icon {
+  width: 40px;
+  height: 56px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #3a2a2a, #221515);
+  border: 2px solid #4a3333;
+  box-shadow: 2px 2px 0 #1a1010;
+  opacity: 0.85;
+}
+
+.discard-col__label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #665;
+}
+
+/* [BLOCK: Dragon Attack Overlay] */
+.dragon-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  padding: 14px 36px;
+  border-radius: 10px;
+  pointer-events: none;
+  animation: dragon-overlay-pop 0.25s ease-out;
+}
+
+.dragon-overlay--player {
+  background: rgba(42, 36, 16, 0.92);
+  border: 2px solid #f0c040;
+  box-shadow: 0 0 28px rgba(240,192,64,0.45);
+}
+
+.dragon-overlay--ai {
+  background: rgba(42, 16, 16, 0.92);
+  border: 2px solid #e05252;
+  box-shadow: 0 0 28px rgba(224,82,82,0.45);
+}
+
+.dragon-overlay__text {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dragon-overlay--player .dragon-overlay__text { color: #f0c040; }
+.dragon-overlay--ai     .dragon-overlay__text { color: #e05252; }
+
+@keyframes dragon-overlay-pop {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}

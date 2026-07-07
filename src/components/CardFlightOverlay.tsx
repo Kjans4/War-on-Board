@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { Card as GameCard } from '../types/game';
 import { Card } from './Card';
+import styles from '../styles/CardFlightOverlay.module.css';
 
 // [BLOCK: Flight Item]
 // One card in transit between two measured DOM rects. fromRect/toRect are
@@ -56,13 +57,13 @@ export function CardFlightOverlay({ flights, durationMs }: CardFlightOverlayProp
   if (flights.length === 0) return null;
 
   return (
-    <div className="card-flight-overlay" aria-hidden="true">
+    <div className={styles['card-flight-overlay']} aria-hidden="true">
       {flights.map((f) => {
         const rect = phaseById[f.id] === 'end' ? f.toRect : f.fromRect;
         return (
           <div
             key={f.id}
-            className="card-flight-overlay__item"
+            className={styles['card-flight-overlay__item']}
             style={{
               top: rect.top,
               left: rect.left,
@@ -78,28 +79,3 @@ export function CardFlightOverlay({ flights, durationMs }: CardFlightOverlayProp
     </div>
   );
 }
-
-// [BLOCK: Styles]
-export const cardFlightOverlayStyles = `
-  .card-flight-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 0;
-    height: 0;
-    z-index: 500;
-    pointer-events: none;
-  }
-
-  .card-flight-overlay__item {
-    position: fixed;
-    transition-property: top, left, width, height;
-    transition-timing-function: ease-in-out;
-    pointer-events: none;
-  }
-
-  .card-flight-overlay__item .card {
-    width: 100%;
-    height: 100%;
-  }
-`;

@@ -1,0 +1,31 @@
+/* src/styles/Hand.module.css */
+
+.hand {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 10px;
+}
+
+.hand__cards {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 100px;
+}
+
+.hand__card-wrap {
+  position: relative;
+  transition: transform 0.15s ease;
+}
+
+.hand__card-wrap:hover {
+  transform: translateY(-10px) !important;
+  z-index: 50 !important;
+}
+
+.hand__empty {
+  color: #555;
+  font-size: 13px;
+  font-style: italic;
+  margin: 0;
+}
