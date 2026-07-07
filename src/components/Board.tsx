@@ -1,11 +1,13 @@
 // src/components/Board.tsx
 
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import clsx from 'clsx';
 import type { BoardSlots, SlotKey, Card as CardType, Owner } from '../types/game';
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
+import { StackInspector } from './StackInspector';
 import styles from '../styles/Board.module.css';
 
 // [BLOCK: Reveal Step Type]
@@ -102,6 +104,13 @@ interface BoardProps {
   // combat/reveal logic — purely a visibility toggle over the opponent
   // hand row.
   devMode?: boolean;
+  // [Dev Test Mode — Phase 1: Stack Inspector] Full stack contents for both
+  // sides, passed down purely so a devMode click on a stack icon can open a
+  // read-only inspector panel (see StackInspector.tsx). Not used for
+  // anything visual otherwise — the stack icon itself still only ever
+  // displays playerStackCount/aiStackCount.
+  playerStack: CardType[];
+  aiStack: CardType[];
   // Exposes DOM nodes for stack icons, discard piles, and slots up to
   // App.tsx by key (e.g. 'stack-player', 'discard-ai', 'slot-player-left')
   // so the return-flight animation can measure flight source/destination
@@ -123,17 +132,34 @@ function fanStyle(index: number, total: number): CSSProperties {
 }
 
 // [BLOCK: Stack Icon]
+// [Dev Test Mode — Phase 1] onClick/clickable let App/Board open the Stack
+// Inspector panel — only ever wired to be clickable when devMode is on
+// (see Board's render below). Normal play never sets these, so the icon
+// stays purely decorative/count-display outside dev mode, unchanged from
+// before this phase.
 function StackIcon({
   count,
   label,
   elRef,
+  onClick,
+  clickable = false,
 }: {
   count: number;
   label: string;
   elRef?: (el: HTMLDivElement | null) => void;
+  onClick?: () => void;
+  clickable?: boolean;
 }) {
   return (
-    <div className={styles['stack-col']} ref={elRef}>
+    <div
+      className={clsx(styles['stack-col'], clickable && styles['stack-col--clickable'])}
+      ref={elRef}
+      onClick={clickable ? onClick : undefined}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => e.key === 'Enter' && onClick?.() : undefined}
+      title={clickable ? `Inspect ${label.toLowerCase()} stack` : undefined}
+    >
       <span className={styles['stack-col__count']}>{count}</span>
       <div className={styles['stack-col__icon']} aria-hidden="true" />
       <span className={styles['stack-col__label']}>{label}</span>
@@ -181,8 +207,28 @@ export function Board({
   canShuffle,
   dragonOverlayOwner,
   devMode = false,
+  playerStack,
+  aiStack,
   registerRef,
 }: BoardProps) {
+  // [Dev Test Mode — Phase 1: Stack Inspector]
+  // Which side's stack panel is currently open, if any. Local UI state
+  // only — mirrors CardTypePicker/Hand.tsx's editingCardId pattern (never
+  // touches GameState/reducer; purely a display concern). Toggling the
+  // same icon again closes it. Reset is implicit: devMode being false
+  // gates the click handler that would ever open it in the first place, so
+  // there's no risk of a stale open panel surviving a devMode toggle-off
+  // mid-render (the icon simply stops being clickable, and the panel
+  // wouldn't get a fresh open call — a leftover open panel could still
+  // render, but only inside a session that hasn't remounted Board, and
+  // App.tsx's handleBackToMenu unmounts back to the Main Menu anyway).
+  const [inspectorOwner, setInspectorOwner] = useState<Owner | null>(null);
+
+  function handleStackClick(owner: Owner) {
+    if (!devMode) return;
+    setInspectorOwner((prev) => (prev === owner ? null : owner));
+  }
+
   // Overlay shows from the moment the timeline reaches 'dragonOverlay' and
   // lingers through 'done' (so it's still visible while outcome badges pop
   // in), then disappears once the round transitions and the caller resets
@@ -199,131 +245,146 @@ export function Board({
   const aiEditable = devMode && placementActive && !aiHasPlaced;
 
   return (
-    <div className={styles['battlefield-row']}>
+    <>
+      <div className={styles['battlefield-row']}>
 
-      {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row] */}
-      <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--ai'])}>
-        <StackIcon
-          count={aiStackCount}
-          label="Opponent"
-          elRef={(el) => registerRef?.('stack-ai', el)}
-        />
-        <DiscardPile
-          count={aiDiscardCount}
-          elRef={(el) => registerRef?.('discard-ai', el)}
-        />
-      </div>
+        {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row] */}
+        <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--ai'])}>
+          <StackIcon
+            count={aiStackCount}
+            label="Opponent"
+            elRef={(el) => registerRef?.('stack-ai', el)}
+            onClick={() => handleStackClick('ai')}
+            clickable={devMode}
+          />
+          <DiscardPile
+            count={aiDiscardCount}
+            elRef={(el) => registerRef?.('discard-ai', el)}
+          />
+        </div>
 
-      {/* [SUB-BLOCK: Battlefield] */}
-      <div className={styles.battlefield}>
+        {/* [SUB-BLOCK: Battlefield] */}
+        <div className={styles.battlefield}>
 
-        {/* Opponent hand — face-down normally; face-up in Dev Test Mode
-            (Phase 1) so the person can see what the AI is holding before
-            it places. While aiEditable, cards are also selectable — click
-            one, then click an empty opponent slot to place it there,
-            exactly mirroring the player's own hand -> slot flow. */}
-        <div className={styles['battlefield__opp-hand']} aria-label={`Opponent hand: ${aiHand.length} cards`}>
-          {aiHand.map((card, i) => (
-            <div key={card.id} className={styles['battlefield__opp-card-wrap']} style={fanStyle(i, aiHand.length)}>
-              <Card
-                card={card}
-                faceDown={!devMode}
-                selected={aiEditable && selectedAiCardId === card.id}
-                onClick={aiEditable ? () => onAiCardClick?.(card) : undefined}
-              />
+          {/* Opponent hand — face-down normally; face-up in Dev Test Mode
+              (Phase 1) so the person can see what the AI is holding before
+              it places. While aiEditable, cards are also selectable — click
+              one, then click an empty opponent slot to place it there,
+              exactly mirroring the player's own hand -> slot flow. */}
+          <div className={styles['battlefield__opp-hand']} aria-label={`Opponent hand: ${aiHand.length} cards`}>
+            {aiHand.map((card, i) => (
+              <div key={card.id} className={styles['battlefield__opp-card-wrap']} style={fanStyle(i, aiHand.length)}>
+                <Card
+                  card={card}
+                  faceDown={!devMode}
+                  selected={aiEditable && selectedAiCardId === card.id}
+                  onClick={aiEditable ? () => onAiCardClick?.(card) : undefined}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Opponent slots */}
+          <div className={clsx(styles.battlefield__row, styles['battlefield__row--ai'])}>
+            <span className={styles['battlefield__row-label']}>Opponent</span>
+            <div className={styles.battlefield__slots}>
+              {SLOT_KEYS.map((key) => {
+                const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!aiSlots[key].card, !devMode);
+                const aiSlot = aiSlots[key];
+                const aiClickable = aiEditable && (aiSlot.card !== null || selectedAiCardId !== null);
+                return (
+                  <Slot
+                    key={key}
+                    slot={aiSlot}
+                    owner="ai"
+                    visuallyFaceDown={visuallyFaceDown}
+                    showOutcome={showOutcome}
+                    onClick={() => onAiSlotClick?.(key)}
+                    clickable={aiClickable}
+                    elRef={(el) => registerRef?.(`slot-ai-${key}`, el)}
+                  />
+                );
+              })}
             </div>
-          ))}
-        </div>
-
-        {/* Opponent slots */}
-        <div className={clsx(styles.battlefield__row, styles['battlefield__row--ai'])}>
-          <span className={styles['battlefield__row-label']}>Opponent</span>
-          <div className={styles.battlefield__slots}>
-            {SLOT_KEYS.map((key) => {
-              const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!aiSlots[key].card, !devMode);
-              const aiSlot = aiSlots[key];
-              const aiClickable = aiEditable && (aiSlot.card !== null || selectedAiCardId !== null);
-              return (
-                <Slot
-                  key={key}
-                  slot={aiSlot}
-                  owner="ai"
-                  visuallyFaceDown={visuallyFaceDown}
-                  showOutcome={showOutcome}
-                  onClick={() => onAiSlotClick?.(key)}
-                  clickable={aiClickable}
-                  elRef={(el) => registerRef?.(`slot-ai-${key}`, el)}
-                />
-              );
-            })}
           </div>
-        </div>
 
-        {/* Divider */}
-        <div className={styles.battlefield__divider} aria-hidden="true">
-          <span className={styles['battlefield__divider-label']}>vs</span>
-        </div>
-
-        {/* Player slots */}
-        <div className={clsx(styles.battlefield__row, styles['battlefield__row--player'])}>
-          <div className={styles.battlefield__slots}>
-            {SLOT_KEYS.map((key) => {
-              const slot = playerSlots[key];
-              const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!slot.card, false);
-              const clickable = placementActive && (slot.card !== null || selectedCardId !== null);
-              return (
-                <Slot
-                  key={key}
-                  slot={slot}
-                  owner="player"
-                  visuallyFaceDown={visuallyFaceDown}
-                  showOutcome={showOutcome}
-                  onClick={() => onSlotClick(key)}
-                  clickable={clickable}
-                  elRef={(el) => registerRef?.(`slot-player-${key}`, el)}
-                />
-              );
-            })}
+          {/* Divider */}
+          <div className={styles.battlefield__divider} aria-hidden="true">
+            <span className={styles['battlefield__divider-label']}>vs</span>
           </div>
-          <span className={styles['battlefield__row-label']}>You</span>
+
+          {/* Player slots */}
+          <div className={clsx(styles.battlefield__row, styles['battlefield__row--player'])}>
+            <div className={styles.battlefield__slots}>
+              {SLOT_KEYS.map((key) => {
+                const slot = playerSlots[key];
+                const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!slot.card, false);
+                const clickable = placementActive && (slot.card !== null || selectedCardId !== null);
+                return (
+                  <Slot
+                    key={key}
+                    slot={slot}
+                    owner="player"
+                    visuallyFaceDown={visuallyFaceDown}
+                    showOutcome={showOutcome}
+                    onClick={() => onSlotClick(key)}
+                    clickable={clickable}
+                    elRef={(el) => registerRef?.(`slot-player-${key}`, el)}
+                  />
+                );
+              })}
+            </div>
+            <span className={styles['battlefield__row-label']}>You</span>
+          </div>
+
+          {/* [SUB-BLOCK: Dragon Attack overlay] */}
+          {showDragonOverlay && (
+            <div
+              className={clsx(
+                styles['dragon-overlay'],
+                dragonOverlayOwner === 'player' ? styles['dragon-overlay--player'] : styles['dragon-overlay--ai'],
+              )}
+              role="status"
+            >
+              <span className={styles['dragon-overlay__text']}>Dragon Attack</span>
+            </div>
+          )}
+
         </div>
 
-        {/* [SUB-BLOCK: Dragon Attack overlay] */}
-        {showDragonOverlay && (
-          <div
-            className={clsx(
-              styles['dragon-overlay'],
-              dragonOverlayOwner === 'player' ? styles['dragon-overlay--player'] : styles['dragon-overlay--ai'],
-            )}
-            role="status"
+        {/* [SUB-BLOCK: Player Stack + Discard + Shuffle — right edge, floats toward player's row] */}
+        <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
+          <StackIcon
+            count={playerStackCount}
+            label="You"
+            elRef={(el) => registerRef?.('stack-player', el)}
+            onClick={() => handleStackClick('player')}
+            clickable={devMode}
+          />
+          <DiscardPile
+            count={playerDiscardCount}
+            elRef={(el) => registerRef?.('discard-player', el)}
+          />
+          <button
+            className={styles['stack-col__shuffle']}
+            onClick={onShuffleStack}
+            disabled={!canShuffle}
+            title="Shuffle your stack — breaks Smart AI's pattern read"
           >
-            <span className={styles['dragon-overlay__text']}>Dragon Attack</span>
-          </div>
-        )}
+            ⇄ Shuffle
+          </button>
+        </div>
 
       </div>
 
-      {/* [SUB-BLOCK: Player Stack + Discard + Shuffle — right edge, floats toward player's row] */}
-      <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
-        <StackIcon
-          count={playerStackCount}
-          label="You"
-          elRef={(el) => registerRef?.('stack-player', el)}
+      {/* [SUB-BLOCK: Dev Test Mode — Phase 1: Stack Inspector panel] */}
+      {devMode && inspectorOwner !== null && (
+        <StackInspector
+          owner={inspectorOwner}
+          stack={inspectorOwner === 'player' ? playerStack : aiStack}
+          onClose={() => setInspectorOwner(null)}
         />
-        <DiscardPile
-          count={playerDiscardCount}
-          elRef={(el) => registerRef?.('discard-player', el)}
-        />
-        <button
-          className={styles['stack-col__shuffle']}
-          onClick={onShuffleStack}
-          disabled={!canShuffle}
-          title="Shuffle your stack — breaks Smart AI's pattern read"
-        >
-          ⇄ Shuffle
-        </button>
-      </div>
-
-    </div>
+      )}
+    </>
   );
 }

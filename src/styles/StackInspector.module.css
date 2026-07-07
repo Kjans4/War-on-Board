@@ -1,0 +1,125 @@
+/* src/styles/StackInspector.module.css */
+
+/*
+  [BLOCK: Backdrop]
+  Transparent, full-viewport, sits behind the panel so a click anywhere
+  outside closes it without a separate click-outside listener — same
+  pattern as CardTypePicker's backdrop.
+*/
+.stack-inspector-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: transparent;
+}
+
+/* [BLOCK: Panel] */
+.stack-inspector {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 41;
+  width: 320px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.stack-inspector__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.stack-inspector__title {
+  font-family: var(--heading, var(--sans));
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.stack-inspector__count {
+  font-weight: 400;
+  color: var(--text);
+}
+
+.stack-inspector__close {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.stack-inspector__close:hover {
+  background: var(--code-bg);
+  color: var(--text-h);
+}
+
+.stack-inspector__empty {
+  padding: 16px 14px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* [BLOCK: List] */
+.stack-inspector__list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.stack-inspector__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.stack-inspector__row:hover {
+  background: var(--code-bg);
+}
+
+.stack-inspector__position {
+  min-width: 32px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.stack-inspector__symbol {
+  flex-shrink: 0;
+}
+
+.stack-inspector__type {
+  flex: 1;
+  color: var(--text-h);
+  text-align: left;
+}
+
+.stack-inspector__exhausted {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}

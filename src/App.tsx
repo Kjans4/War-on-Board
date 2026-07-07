@@ -479,6 +479,8 @@ function App() {
                 canShuffle={canShuffle}
                 dragonOverlayOwner={dragonOverlayOwner}
                 devMode={devMode}
+                playerStack={playerStack}
+                aiStack={aiStack}
                 registerRef={registerRef}
               />
               <Hand
