@@ -471,6 +471,9 @@ function App() {
                 selectedCardId={selectedCardId}
                 onSlotClick={handleSlotClick}
                 placementActive={placementActive}
+                onAiSwapCard={(cardId, newType) =>
+                  dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'ai', cardId, newType })
+                }
                 playerStackCount={playerStack.length}
                 aiStackCount={aiStack.length}
                 playerDiscardCount={playerDiscard.length}
@@ -488,6 +491,11 @@ function App() {
                 selectedCardId={selectedCardId}
                 onCardClick={handleCardClick}
                 disabled={phase !== 'placement'}
+                devMode={devMode}
+                stack={playerStack}
+                onSwapCard={(cardId, newType) =>
+                  dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'player', cardId, newType })
+                }
               />
             </>
           )}

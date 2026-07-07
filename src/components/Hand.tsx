@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import type { Card as CardType, CardType as CardTypeUnion } from '../types/game';
+import type { Card as CardType, RPSType } from '../types/game';
 import { Card } from './Card';
 import { CardTypePicker, CardEditButton } from './CardTypePicker';
 import { getStackTypeCounts } from '../logic/deck';
@@ -15,10 +15,13 @@ import styles from '../styles/Hand.module.css';
 // that row is gone. Placement now happens directly on the battlefield's
 // player slots (see Board.tsx + Slot.tsx onClick).
 //
-// [Dev Test Mode — Phase 3] devMode/stack/onSwapCard are optional and only
+// [Dev Test Mode — Phase 2] devMode/stack/onSwapCard are optional and only
 // exercised when devMode is true — normal play never touches them. Editing
 // reuses the same interactivity window as placement (disabled === true
 // outside the placement phase), same as the rest of this component.
+// onSwapCard's newType is RPSType (not the full CardType union) — Dragon
+// is excluded from the swap picker per dev-test-mode-plan.md's standing
+// conflict note, so this callback is never invoked with 'Dragon'.
 interface HandProps {
   hand: CardType[];
   selectedCardId: string | null;
@@ -26,7 +29,7 @@ interface HandProps {
   disabled?: boolean; // true outside the placement phase
   devMode?: boolean;
   stack?: CardType[]; // the player's own stack — source for swap-in cards + counts
-  onSwapCard?: (cardId: string, newType: CardTypeUnion) => void;
+  onSwapCard?: (cardId: string, newType: RPSType) => void;
 }
 
 // [BLOCK: Fan Geometry]
@@ -56,7 +59,7 @@ export function Hand({
   stack = [],
   onSwapCard,
 }: HandProps) {
-  // [Dev Test Mode — Phase 3] Which hand card (by id) currently has its
+  // [Dev Test Mode — Phase 2] Which hand card (by id) currently has its
   // type picker open, if any. Local UI state only — never touches
   // GameState/reducer directly; the actual swap goes through onSwapCard.
   const [editingCardId, setEditingCardId] = useState<string | null>(null);

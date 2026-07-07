@@ -1,9 +1,9 @@
 // src/components/CardTypePicker.tsx
 
-import type { CardType } from '../types/game';
+import type { CardType, RPSType } from '../types/game';
 import styles from '../styles/CardTypePicker.module.css';
 
-// [BLOCK: Dev Test Mode — Phase 3]
+// [BLOCK: Dev Test Mode — Phase 2]
 // Shared popover used by both Hand.tsx (player hand) and Board.tsx (AI
 // hand) to swap a hand card for a different type, pulled from that same
 // owner's stack (see useGameState.ts's DEV_SWAP_HAND_CARD). Purely a
@@ -15,20 +15,27 @@ import styles from '../styles/CardTypePicker.module.css';
 // wrapper around the card it's editing (see Hand.tsx / Board.tsx usage) —
 // it absolutely-positions itself just below that wrapper. A transparent,
 // full-viewport backdrop sits behind it so clicking anywhere outside
-// closes the picker without needing an external click-outside listener.
+// closes it without needing an external click-outside listener.
+//
+// [Dev Test Mode — Phase 2] Dragon is deliberately excluded from TYPES —
+// per dev-test-mode-plan.md's standing conflict note, this session leaves
+// the Dragon/round-count mismatch untouched and doesn't extend Dragon into
+// any new dev-tooling surface. `counts` still accepts the full CardType
+// record (as returned by deck.ts's getStackTypeCounts) purely so callers
+// don't need to reshape it — the Dragon entry within it is simply never
+// read here.
 
-const TYPES: CardType[] = ['Sword', 'Arrow', 'Shield', 'Dragon'];
+const TYPES: RPSType[] = ['Sword', 'Arrow', 'Shield'];
 
-const TYPE_SYMBOL: Record<CardType, string> = {
+const TYPE_SYMBOL: Record<RPSType, string> = {
   Sword: '⚔️',
   Arrow: '🏹',
   Shield: '🛡️',
-  Dragon: '🐉',
 };
 
 interface CardTypePickerProps {
   counts: Record<CardType, number>;
-  onPick: (type: CardType) => void;
+  onPick: (type: RPSType) => void;
   onClose: () => void;
 }
 

@@ -3,11 +3,13 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import clsx from 'clsx';
-import type { BoardSlots, SlotKey, Card as CardType, Owner } from '../types/game';
+import type { BoardSlots, SlotKey, Card as CardType, Owner, RPSType } from '../types/game';
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
 import { StackInspector } from './StackInspector';
+import { CardTypePicker, CardEditButton } from './CardTypePicker';
+import { getStackTypeCounts } from '../logic/deck';
 import styles from '../styles/Board.module.css';
 
 // [BLOCK: Reveal Step Type]
@@ -89,6 +91,12 @@ interface BoardProps {
   selectedAiCardId?: string | null;
   onAiCardClick?: (card: CardType) => void;
   onAiSlotClick?: (slotKey: SlotKey) => void;
+  // [Dev Test Mode — Phase 2] Swap an AI hand card (still unplaced) for a
+  // different type, pulled from the AI's own stack — mirrors Hand.tsx's
+  // onSwapCard for the player side. newType is RPSType only; Dragon is
+  // excluded from the picker (see CardTypePicker.tsx). Optional/inert
+  // outside devMode, same convention as onAiCardClick/onAiSlotClick above.
+  onAiSwapCard?: (cardId: string, newType: RPSType) => void;
   playerStackCount: number;
   aiStackCount: number;
   playerDiscardCount: number;
@@ -104,10 +112,11 @@ interface BoardProps {
   // combat/reveal logic — purely a visibility toggle over the opponent
   // hand row.
   devMode?: boolean;
-  // [Dev Test Mode — Phase 1: Stack Inspector] Full stack contents for both
-  // sides, passed down purely so a devMode click on a stack icon can open a
-  // read-only inspector panel (see StackInspector.tsx). Not used for
-  // anything visual otherwise — the stack icon itself still only ever
+  // [Dev Test Mode — Phase 1: Stack Inspector / Phase 2: Hand Swap]
+  // Full stack contents for both sides. Used by devMode's stack-icon click
+  // (read-only inspector) AND as the source of per-type remaining counts
+  // for the AI hand swap-picker (getStackTypeCounts(aiStack)). Not used
+  // for anything visual otherwise — the stack icon itself still only ever
   // displays playerStackCount/aiStackCount.
   playerStack: CardType[];
   aiStack: CardType[];
@@ -199,6 +208,7 @@ export function Board({
   selectedAiCardId = null,
   onAiCardClick,
   onAiSlotClick,
+  onAiSwapCard,
   playerStackCount,
   aiStackCount,
   playerDiscardCount,
@@ -215,19 +225,27 @@ export function Board({
   // Which side's stack panel is currently open, if any. Local UI state
   // only — mirrors CardTypePicker/Hand.tsx's editingCardId pattern (never
   // touches GameState/reducer; purely a display concern). Toggling the
-  // same icon again closes it. Reset is implicit: devMode being false
-  // gates the click handler that would ever open it in the first place, so
-  // there's no risk of a stale open panel surviving a devMode toggle-off
-  // mid-render (the icon simply stops being clickable, and the panel
-  // wouldn't get a fresh open call — a leftover open panel could still
-  // render, but only inside a session that hasn't remounted Board, and
-  // App.tsx's handleBackToMenu unmounts back to the Main Menu anyway).
+  // same icon again closes it.
   const [inspectorOwner, setInspectorOwner] = useState<Owner | null>(null);
 
   function handleStackClick(owner: Owner) {
     if (!devMode) return;
     setInspectorOwner((prev) => (prev === owner ? null : owner));
   }
+
+  // [Dev Test Mode — Phase 2: AI Hand Swap]
+  // Which AI hand card (by id) currently has its type picker open, if
+  // any — mirrors Hand.tsx's editingCardId for the player side exactly,
+  // just kept here instead since the AI hand row lives in Board, not Hand.
+  // Gated on placementActive rather than aiEditable/aiHasPlaced: editing an
+  // unplaced hand card is independent of whether AI slots still have room
+  // (per dev-test-mode-plan.md's "option B" — manual slot placement AND
+  // the swap-picker both apply to AI hand cards simultaneously). A card
+  // stops being editable the moment it's actually placed, since placing it
+  // removes it from aiHand entirely — no extra guard needed for that.
+  const [aiEditingCardId, setAiEditingCardId] = useState<string | null>(null);
+  const canEditAiHand = devMode && placementActive && !!onAiSwapCard;
+  const aiStackCounts = canEditAiHand ? getStackTypeCounts(aiStack) : null;
 
   // Overlay shows from the moment the timeline reaches 'dragonOverlay' and
   // lingers through 'done' (so it's still visible while outcome badges pop
@@ -270,16 +288,41 @@ export function Board({
               (Phase 1) so the person can see what the AI is holding before
               it places. While aiEditable, cards are also selectable — click
               one, then click an empty opponent slot to place it there,
-              exactly mirroring the player's own hand -> slot flow. */}
+              exactly mirroring the player's own hand -> slot flow.
+              [Dev Test Mode — Phase 2] canEditAiHand cards also get the ✎
+              swap-picker, independent of aiEditable's slot-based gate. */}
           <div className={styles['battlefield__opp-hand']} aria-label={`Opponent hand: ${aiHand.length} cards`}>
             {aiHand.map((card, i) => (
-              <div key={card.id} className={styles['battlefield__opp-card-wrap']} style={fanStyle(i, aiHand.length)}>
+              <div
+                key={card.id}
+                className={styles['battlefield__opp-card-wrap']}
+                style={{ ...fanStyle(i, aiHand.length), position: 'relative' }}
+              >
                 <Card
                   card={card}
                   faceDown={!devMode}
                   selected={aiEditable && selectedAiCardId === card.id}
                   onClick={aiEditable ? () => onAiCardClick?.(card) : undefined}
                 />
+
+                {canEditAiHand && (
+                  <CardEditButton
+                    onClick={() =>
+                      setAiEditingCardId((prev) => (prev === card.id ? null : card.id))
+                    }
+                  />
+                )}
+
+                {canEditAiHand && aiEditingCardId === card.id && aiStackCounts && (
+                  <CardTypePicker
+                    counts={aiStackCounts}
+                    onPick={(newType) => {
+                      onAiSwapCard!(card.id, newType);
+                      setAiEditingCardId(null);
+                    }}
+                    onClose={() => setAiEditingCardId(null)}
+                  />
+                )}
               </div>
             ))}
           </div>

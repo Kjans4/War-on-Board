@@ -9,6 +9,8 @@ import type {
   AIDifficulty,
   RoundHistoryEntry,
   RoundResolution,
+  Owner,
+  RPSType,
 } from '../types/game';
 import {
   HAND_SIZE,
@@ -73,7 +75,11 @@ export type GameAction =
   | { type: 'DRAW_CARDS' }
   | { type: 'PLACE_CARD'; slotKey: SlotKey; card: Card }
   | { type: 'REMOVE_CARD'; slotKey: SlotKey }
-  | { type: 'PLACE_AI_CARDS'; placements: Record<SlotKey, Card> }
+  // placements is Partial — getAIPlacement (logic/ai.ts) only returns
+  // entries for the slots it was asked to fill (slotsToFill), which may be
+  // a subset when Dev Test Mode's manual AI placement has already claimed
+  // some slots before this fires (see App.tsx's AI Placement Timer).
+  | { type: 'PLACE_AI_CARDS'; placements: Partial<Record<SlotKey, Card>> }
   | { type: 'START_REVEAL' }
   | { type: 'REVEAL_ROUND' }
   | { type: 'RECORD_HISTORY' }
@@ -81,6 +87,13 @@ export type GameAction =
   | { type: 'SHUFFLE_STACK' }
   | { type: 'SET_DIFFICULTY'; difficulty: AIDifficulty }
   | { type: 'SET_DEV_MODE'; devMode: boolean }
+  // [Dev Test Mode — Phase 2] Swap a hand card (not yet placed) for a
+  // different type, pulled from that same owner's own stack. Same-side,
+  // same-pool only — never crosses player/AI pools, never fabricates a
+  // card outside the fixed 21-card composition. newType is RPSType only;
+  // Dragon is excluded from the swap picker entirely (see
+  // CardTypePicker.tsx / dev-test-mode-plan.md's standing conflict note).
+  | { type: 'DEV_SWAP_HAND_CARD'; owner: Owner; cardId: string; newType: RPSType }
   | { type: 'RESTART' };
 
 // [BLOCK: Validation Helpers]
@@ -177,13 +190,20 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       const { placements } = action;
       const aiSlots: BoardSlots = { ...state.aiSlots };
 
+      // Only touch slots actually present in placements — a partial fill
+      // (see the action type's doc comment) must leave any already-placed
+      // slot (from Dev Test Mode's manual placement) untouched rather than
+      // stomping it with an undefined card.
       for (const key of SLOT_KEYS) {
-        aiSlots[key] = { key, card: placements[key], state: 'placed' };
+        const card = placements[key];
+        if (card) {
+          aiSlots[key] = { key, card, state: 'placed' };
+        }
       }
 
-      const aiHand = state.aiHand.filter(
-        (c) => !Object.values(placements).find((p) => p.id === c.id)
-      );
+      const placedCards = Object.values(placements).filter((c): c is Card => !!c);
+      const placedIds = new Set(placedCards.map((c) => c.id));
+      const aiHand = state.aiHand.filter((c) => !placedIds.has(c.id));
 
       return {
         ...state,
@@ -461,6 +481,57 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         devMode: action.devMode,
       };
+    }
+
+    // -- [Dev Test Mode — Phase 2: Hand Swap]
+    //    Swaps one hand card (not yet placed) for a card of newType, pulled
+    //    from that SAME owner's stack — never crosses player/AI pools, per
+    //    dev-test-mode-plan.md's "same-side, same-pool only" constraint.
+    //    Gated on 'placement' phase only (per the plan's design note:
+    //    "it only affects what ends up in hand before placement" — existing
+    //    systems like exhausted flags, cascade, and pattern tracking are
+    //    otherwise untouched). No-ops (returns state unchanged) if the
+    //    card isn't found in that owner's hand, or if that owner's stack
+    //    has no card of the requested type — mirrors CardTypePicker's own
+    //    "(0 left)" disabled-option guard, just re-checked here in case
+    //    stack contents shifted between render and dispatch.
+    //
+    //    The outgoing hand card is shuffled back into the stack (rather
+    //    than pushed to a fixed position) so a tester swapping cards
+    //    doesn't get a side-effect of also making that card's next-draw
+    //    position predictable — this is a design assumption for a dev-only
+    //    tool, not a rule stated in card-systems.md, flagged here rather
+    //    than silently decided. exhausted flags are left untouched on both
+    //    the outgoing and incoming card — this tool moves cards, it never
+    //    resets match state.
+    case 'DEV_SWAP_HAND_CARD': {
+      if (state.phase !== 'placement') return state;
+
+      const { owner, cardId, newType } = action;
+      const hand = owner === 'player' ? state.playerHand : state.aiHand;
+      const stack = owner === 'player' ? state.playerStack : state.aiStack;
+
+      const handIndex = hand.findIndex((c) => c.id === cardId);
+      if (handIndex === -1) return state;
+
+      const stackIndex = stack.findIndex((c) => c.type === newType);
+      if (stackIndex === -1) return state; // requested type unavailable in this side's stack
+
+      const outgoingCard = hand[handIndex];
+      const incomingCard = stack[stackIndex];
+
+      const newHand = [...hand];
+      newHand[handIndex] = incomingCard;
+
+      const stackWithoutIncoming = [
+        ...stack.slice(0, stackIndex),
+        ...stack.slice(stackIndex + 1),
+      ];
+      const newStack = shuffleStack([...stackWithoutIncoming, outgoingCard]);
+
+      return owner === 'player'
+        ? { ...state, playerHand: newHand, playerStack: newStack }
+        : { ...state, aiHand: newHand, aiStack: newStack };
     }
 
     // -- Restart the game entirely
