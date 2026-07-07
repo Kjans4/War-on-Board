@@ -78,6 +78,14 @@ interface BoardProps {
   selectedCardId: string | null;
   onSlotClick: (slotKey: SlotKey) => void;
   placementActive: boolean;
+  // [Dev Test Mode] Manual AI hand/slot editing — mirrors selectedCardId/
+  // onSlotClick above, but for the AI's own side. Only meaningful (and
+  // only wired to be clickable) while devMode is on and at least one AI
+  // slot is still empty — see Board's internal aiEditable and App.tsx's
+  // handleAiCardClick/handleAiSlotClick.
+  selectedAiCardId?: string | null;
+  onAiCardClick?: (card: CardType) => void;
+  onAiSlotClick?: (slotKey: SlotKey) => void;
   playerStackCount: number;
   aiStackCount: number;
   playerDiscardCount: number;
@@ -161,6 +169,9 @@ export function Board({
   selectedCardId,
   onSlotClick,
   placementActive,
+  selectedAiCardId = null,
+  onAiCardClick,
+  onAiSlotClick,
   playerStackCount,
   aiStackCount,
   playerDiscardCount,
@@ -177,6 +188,14 @@ export function Board({
   // dragonOverlayOwner to null.
   const showDragonOverlay =
     dragonOverlayOwner !== null && (revealStep === 'dragonOverlay' || revealStep === 'done');
+
+  // [Dev Test Mode] Manual AI editing window: only while devMode is on,
+  // still in placement, and at least one AI slot is still empty. Once all
+  // 3 are filled — whether by the tester's own clicks, the AI's timer, or
+  // some mix — editing closes, matching the reducer's own PLACE_AI_CARD/
+  // REMOVE_AI_CARD guards.
+  const aiHasPlaced = SLOT_KEYS.every((k) => aiSlots[k].card !== null);
+  const aiEditable = devMode && placementActive && !aiHasPlaced;
 
   return (
     <div className="battlefield-row">
@@ -199,11 +218,18 @@ export function Board({
 
         {/* Opponent hand — face-down normally; face-up in Dev Test Mode
             (Phase 1) so the person can see what the AI is holding before
-            it places. */}
+            it places. While aiEditable, cards are also selectable — click
+            one, then click an empty opponent slot to place it there,
+            exactly mirroring the player's own hand -> slot flow. */}
         <div className="battlefield__opp-hand" aria-label={`Opponent hand: ${aiHand.length} cards`}>
           {aiHand.map((card, i) => (
             <div key={card.id} className="battlefield__opp-card-wrap" style={fanStyle(i, aiHand.length)}>
-              <Card card={card} faceDown={!devMode} />
+              <Card
+                card={card}
+                faceDown={!devMode}
+                selected={aiEditable && selectedAiCardId === card.id}
+                onClick={aiEditable ? () => onAiCardClick?.(card) : undefined}
+              />
             </div>
           ))}
         </div>
@@ -214,13 +240,17 @@ export function Board({
           <div className="battlefield__slots">
             {SLOT_KEYS.map((key) => {
               const { visuallyFaceDown, showOutcome } = slotVisuals(key, revealStep, !!aiSlots[key].card, !devMode);
+              const aiSlot = aiSlots[key];
+              const aiClickable = aiEditable && (aiSlot.card !== null || selectedAiCardId !== null);
               return (
                 <Slot
                   key={key}
-                  slot={aiSlots[key]}
+                  slot={aiSlot}
                   owner="ai"
                   visuallyFaceDown={visuallyFaceDown}
                   showOutcome={showOutcome}
+                  onClick={() => onAiSlotClick?.(key)}
+                  clickable={aiClickable}
                   elRef={(el) => registerRef?.(`slot-ai-${key}`, el)}
                 />
               );

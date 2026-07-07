@@ -5,19 +5,30 @@ import { SLOT_KEYS, CARDS_TO_PLACE, CARDS_PER_TYPE, RPS_TYPES } from '../types/g
 import { shuffle } from './deck';
 
 // [BLOCK: Random AI]
-// Selects 3 cards from hand at random, assigns to slots in random order.
+// Selects cards from hand at random, assigns to slots in random order.
 // No memory, no pattern recognition. Dragon is just another card in hand
 // here — Random AI has no concept of "saving" it.
-export function randomAIPlacement(hand: Card[]): Record<SlotKey, Card> {
+//
+// [Dev Test Mode] slotsToFill lets a caller ask for only a SUBSET of the 3
+// slots — needed because in Dev Test Mode the tester may have already
+// manually claimed one or two AI slots before this fires (see App.tsx's AI
+// placement timer, which computes the still-empty slots at fire-time and
+// passes only those in). Defaults to all 3 slots for normal play, where
+// nothing has been manually claimed yet.
+export function randomAIPlacement(
+  hand: Card[],
+  slotsToFill: SlotKey[] = SLOT_KEYS
+): Partial<Record<SlotKey, Card>> {
   const shuffledHand = shuffle([...hand]);
-  const picked = shuffledHand.slice(0, CARDS_TO_PLACE);
-  const shuffledSlots = shuffle([...SLOT_KEYS]);
+  const picked = shuffledHand.slice(0, slotsToFill.length);
+  const shuffledSlots = shuffle([...slotsToFill]);
 
-  return {
-    [shuffledSlots[0]]: picked[0],
-    [shuffledSlots[1]]: picked[1],
-    [shuffledSlots[2]]: picked[2],
-  } as Record<SlotKey, Card>;
+  const placement: Partial<Record<SlotKey, Card>> = {};
+  shuffledSlots.forEach((slotKey, i) => {
+    if (picked[i]) placement[slotKey] = picked[i];
+  });
+
+  return placement;
 }
 
 // [BLOCK: RPS Counter Lookup]
@@ -104,17 +115,19 @@ export function getScarceTypes(
 
 // [BLOCK: AI Placement Entry Point]
 // Routes to the correct placement strategy based on difficulty.
+// slotsToFill: see randomAIPlacement's doc comment — defaults to all 3.
 export function getAIPlacement(
   hand: Card[],
   aiState: AIState,
-  round: number
-): Record<SlotKey, Card> {
+  round: number,
+  slotsToFill: SlotKey[] = SLOT_KEYS
+): Partial<Record<SlotKey, Card>> {
   switch (aiState.difficulty) {
     case 'smart':
-      return smartAIPlacement(hand, aiState, round);
+      return smartAIPlacement(hand, aiState, round, slotsToFill);
     case 'random':
     default:
-      return randomAIPlacement(hand);
+      return randomAIPlacement(hand, slotsToFill);
   }
 }
 
@@ -155,11 +168,17 @@ function takeBestAvailableCard(hand: Card[]): Card | null {
 //   else best available card. Confidence gates whether the AI commits to a
 //   slot's specific prediction at all; below that roll it falls back to the
 //   global-tendency counter instead of the per-slot one.
+//
+// slotsToFill: see randomAIPlacement's doc comment — defaults to all 3.
+// Prediction/confidence still reads from the REAL slot key (patternHistory
+// is keyed by the board's actual left/center/right, not by position within
+// slotsToFill), so a partial fill still predicts correctly per real slot.
 export function smartAIPlacement(
   hand: Card[],
   aiState: AIState,
-  round: number
-): Record<SlotKey, Card> {
+  round: number,
+  slotsToFill: SlotKey[] = SLOT_KEYS
+): Partial<Record<SlotKey, Card>> {
   const { patternHistory, playerCardsSeen, confidenceDisrupted } = aiState;
 
   const confidence = getSlotConfidence(round, confidenceDisrupted);
@@ -172,7 +191,7 @@ export function smartAIPlacement(
   // Resolve slots in random order so a fixed left-to-right pass doesn't
   // systematically favor one slot's prediction when the hand runs short
   // of a desired type.
-  const slotOrder = shuffle([...SLOT_KEYS]);
+  const slotOrder = shuffle([...slotsToFill]);
 
   for (const slotKey of slotOrder) {
     const predicted = predictSlotType(patternHistory, slotKey);
@@ -188,5 +207,5 @@ export function smartAIPlacement(
     }
   }
 
-  return placement as Record<SlotKey, Card>;
+  return placement;
 }
