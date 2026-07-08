@@ -75,6 +75,14 @@ export type GameAction =
   | { type: 'DRAW_CARDS' }
   | { type: 'PLACE_CARD'; slotKey: SlotKey; card: Card }
   | { type: 'REMOVE_CARD'; slotKey: SlotKey }
+  // [Dev Test Mode] Single-card AI place/remove — mirrors PLACE_CARD/
+  // REMOVE_CARD exactly, but for the AI's own slots. Distinct from the
+  // bulk PLACE_AI_CARDS below (which the AI's own ~2s placement timer
+  // dispatches) — these two exist so a devMode tester can edit the AI's
+  // board one card at a time, the same way the player edits their own,
+  // including removing/replacing a card in an already-full slot.
+  | { type: 'PLACE_AI_CARD'; slotKey: SlotKey; card: Card }
+  | { type: 'REMOVE_AI_CARD'; slotKey: SlotKey }
   // placements is Partial — getAIPlacement (logic/ai.ts) only returns
   // entries for the slots it was asked to fill (slotsToFill), which may be
   // a subset when Dev Test Mode's manual AI placement has already claimed
@@ -181,6 +189,51 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         playerHand: [...state.playerHand, slot.card],
         playerSlots: {
           ...state.playerSlots,
+          [slotKey]: { key: slotKey, card: null, state: 'empty' },
+        },
+      };
+    }
+
+    // -- [Dev Test Mode] Player places/removes exactly one AI card at a
+    //    time — mirrors PLACE_CARD/REMOVE_CARD above exactly, just against
+    //    aiSlots/aiHand instead. Lets a tester edit an occupied AI slot the
+    //    same way they'd edit their own (remove, then place a different
+    //    hand card) — see App.tsx's handleAiSlotClick/handleAiCardClick.
+    //    Distinct from the bulk PLACE_AI_CARDS case below, which only the
+    //    AI's own placement timer dispatches.
+    case 'PLACE_AI_CARD': {
+      if (state.phase !== 'placement') return state;
+
+      const { slotKey, card } = action;
+      const alreadyPlaced = SLOT_KEYS.filter(
+        (k) => state.aiSlots[k].card !== null
+      ).length;
+
+      if (alreadyPlaced >= CARDS_TO_PLACE) return state;
+      if (state.aiSlots[slotKey].card !== null) return state;
+
+      return {
+        ...state,
+        aiHand: state.aiHand.filter((c) => c.id !== card.id),
+        aiSlots: {
+          ...state.aiSlots,
+          [slotKey]: { key: slotKey, card, state: 'placed' },
+        },
+      };
+    }
+
+    case 'REMOVE_AI_CARD': {
+      if (state.phase !== 'placement') return state;
+
+      const { slotKey } = action;
+      const slot = state.aiSlots[slotKey];
+      if (!slot.card) return state;
+
+      return {
+        ...state,
+        aiHand: [...state.aiHand, slot.card],
+        aiSlots: {
+          ...state.aiSlots,
           [slotKey]: { key: slotKey, card: null, state: 'empty' },
         },
       };

@@ -181,6 +181,12 @@ function App() {
   const [started, setStarted] = useState(false);
   const { state, dispatch } = useGameState('random');
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  // [Dev Test Mode] Mirrors selectedCardId above, but for manually editing
+  // the AI's own slots (Option A parity — see handleAiCardClick/
+  // handleAiSlotClick below). Only ever meaningfully set while devMode is
+  // on; harmless/unused otherwise since Board only wires onAiCardClick's
+  // click handler when aiEditable is true.
+  const [selectedAiCardId, setSelectedAiCardId] = useState<string | null>(null);
   const [revealStep, setRevealStep] = useState<RevealStep>(null);
   const [dragonOverlayOwner, setDragonOverlayOwner] = useState<Owner | null>(null);
   const [flights, setFlights] = useState<FlightItem[]>([]);
@@ -326,7 +332,10 @@ function App() {
 
   // [BLOCK: Clear card selection when leaving placement]
   useEffect(() => {
-    if (phase !== 'placement') setSelectedCardId(null);
+    if (phase !== 'placement') {
+      setSelectedCardId(null);
+      setSelectedAiCardId(null);
+    }
   }, [phase]);
 
   // [BLOCK: Derived values]
@@ -346,6 +355,8 @@ function App() {
   const canShuffle = phase !== 'reveal' && phase !== 'gameover' && revealStep === null;
   const placementActive = phase === 'placement';
   const selectedCard = playerHand.find((c) => c.id === selectedCardId) ?? null;
+  // [Dev Test Mode] Mirrors selectedCard above for the AI side.
+  const selectedAiCard = aiHand.find((c) => c.id === selectedAiCardId) ?? null;
 
   // [BLOCK: Handlers]
   // devMode is dispatched into reducer state BEFORE flipping `started` to
@@ -384,6 +395,30 @@ function App() {
     if (selectedCard) {
       dispatch({ type: 'PLACE_CARD', slotKey, card: selectedCard });
       setSelectedCardId(null);
+    }
+  }
+
+  // [Dev Test Mode — Option A] Mirrors handleCardClick/handleSlotClick
+  // above exactly, but dispatches the AI-specific PLACE_AI_CARD/
+  // REMOVE_AI_CARD actions against aiHand/aiSlots instead. Only ever
+  // reachable via Board's onAiCardClick/onAiSlotClick, which are only
+  // wired to be clickable when aiEditable (devMode && placementActive) —
+  // normal play never calls these.
+  function handleAiCardClick(card: CardType) {
+    if (phase !== 'placement') return;
+    setSelectedAiCardId((prev) => (prev === card.id ? null : card.id));
+  }
+
+  function handleAiSlotClick(slotKey: SlotKey) {
+    if (phase !== 'placement') return;
+    const slot = aiSlots[slotKey];
+    if (slot.card) {
+      dispatch({ type: 'REMOVE_AI_CARD', slotKey });
+      return;
+    }
+    if (selectedAiCard) {
+      dispatch({ type: 'PLACE_AI_CARD', slotKey, card: selectedAiCard });
+      setSelectedAiCardId(null);
     }
   }
 
@@ -471,6 +506,9 @@ function App() {
                 selectedCardId={selectedCardId}
                 onSlotClick={handleSlotClick}
                 placementActive={placementActive}
+                selectedAiCardId={selectedAiCardId}
+                onAiCardClick={handleAiCardClick}
+                onAiSlotClick={handleAiSlotClick}
                 onAiSwapCard={(cardId, newType) =>
                   dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'ai', cardId, newType })
                 }

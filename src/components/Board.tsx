@@ -268,13 +268,12 @@ export function Board({
   const showDragonOverlay =
     dragonOverlayOwner !== null && (revealStep === 'dragonOverlay' || revealStep === 'done');
 
-  // [Dev Test Mode] Manual AI editing window: only while devMode is on,
-  // still in placement, and at least one AI slot is still empty. Once all
-  // 3 are filled — whether by the tester's own clicks, the AI's timer, or
-  // some mix — editing closes, matching the reducer's own PLACE_AI_CARD/
-  // REMOVE_AI_CARD guards.
-  const aiHasPlaced = SLOT_KEYS.every((k) => aiSlots[k].card !== null);
-  const aiEditable = devMode && placementActive && !aiHasPlaced;
+  // [Dev Test Mode] Manual AI editing window: only while devMode is on and
+  // still in placement — no longer gated on "at least one slot empty".
+  // Occupied AI slots must stay clickable so a tester can remove/replace a
+  // card the same way they'd edit their own board (see App.tsx's
+  // handleAiSlotClick dispatching REMOVE_AI_CARD for an occupied slot).
+  const aiEditable = devMode && placementActive;
 
   return (
     <>
