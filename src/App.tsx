@@ -7,6 +7,7 @@ import { findDragonPlacement } from './logic/combat';
 import { Board } from './components/Board';
 import type { RevealStep } from './components/Board';
 import { Hand } from './components/Hand';
+import { PlayerStackControls } from './components/PlayerStackControls';
 import { RoundCounter, PlayFooter } from './components/HUD';
 import { RoundHistory } from './components/RoundHistory';
 import { MainMenu } from './components/MainMenu';
@@ -512,33 +513,48 @@ function App() {
                 onAiSwapCard={(cardId, newType) =>
                   dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'ai', cardId, newType })
                 }
-                playerStackCount={playerStack.length}
                 aiStackCount={aiStack.length}
                 playerDiscardCount={playerDiscard.length}
                 aiDiscardCount={aiDiscard.length}
-                onShuffleStack={handleShuffleStack}
-                canShuffle={canShuffle}
                 dragonOverlayOwner={dragonOverlayOwner}
                 devMode={devMode}
-                playerStack={playerStack}
                 aiStack={aiStack}
                 canEditStacks={canShuffle}
-                onStackSwapCard={(owner, cardId, newType) =>
-                  dispatch({ type: 'DEV_SWAP_STACK_CARD', owner, cardId, newType })
+                onStackSwapCard={(cardId, newType) =>
+                  dispatch({ type: 'DEV_SWAP_STACK_CARD', owner: 'ai', cardId, newType })
                 }
                 registerRef={registerRef}
               />
-              <Hand
-                hand={playerHand}
-                selectedCardId={selectedCardId}
-                onCardClick={handleCardClick}
-                disabled={phase !== 'placement'}
-                devMode={devMode}
-                stack={playerStack}
-                onSwapCard={(cardId, newType) =>
-                  dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'player', cardId, newType })
-                }
-              />
+              {/* [Layout] Player's stack icon + Shuffle button now sit to the
+                  right of Hand, matching the opponent's stack-next-to-hand
+                  look — see design discussion. Discard stays inside Board.
+                  Inline flex here rather than a new CSS class, since
+                  App.module.css wasn't available to extend safely. */}
+              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '24px' }}>
+                <Hand
+                  hand={playerHand}
+                  selectedCardId={selectedCardId}
+                  onCardClick={handleCardClick}
+                  disabled={phase !== 'placement'}
+                  devMode={devMode}
+                  stack={playerStack}
+                  onSwapCard={(cardId, newType) =>
+                    dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'player', cardId, newType })
+                  }
+                />
+                <PlayerStackControls
+                  count={playerStack.length}
+                  onShuffleStack={handleShuffleStack}
+                  canShuffle={canShuffle}
+                  devMode={devMode}
+                  playerStack={playerStack}
+                  canEditStacks={canShuffle}
+                  onSwapCard={(cardId, newType) =>
+                    dispatch({ type: 'DEV_SWAP_STACK_CARD', owner: 'player', cardId, newType })
+                  }
+                  registerRef={registerRef}
+                />
+              </div>
             </>
           )}
         </div>

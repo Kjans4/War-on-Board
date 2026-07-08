@@ -97,12 +97,14 @@ interface BoardProps {
   // excluded from the picker (see CardTypePicker.tsx). Optional/inert
   // outside devMode, same convention as onAiCardClick/onAiSlotClick above.
   onAiSwapCard?: (cardId: string, newType: RPSType) => void;
-  playerStackCount: number;
+  // [Layout] playerStackCount/onShuffleStack/canShuffle/playerStack removed
+  // from Board's props — the player's stack icon + shuffle button now
+  // render next to <Hand> in App.tsx instead of inside the battlefield row
+  // (see the new PlayerStackControls.tsx). The player's Discard pile stays
+  // here, unchanged.
   aiStackCount: number;
   playerDiscardCount: number;
   aiDiscardCount: number;
-  onShuffleStack: () => void;
-  canShuffle: boolean;
   // Set only when exactly one side played a Dragon this round — drives the
   // "Dragon Attack" banner. null the rest of the time (including
   // both-sides-Dragon rounds, which cancel rather than wipe).
@@ -113,25 +115,25 @@ interface BoardProps {
   // hand row.
   devMode?: boolean;
   // [Dev Test Mode — Phase 1: Stack Inspector / Phase 2: Hand Swap]
-  // Full stack contents for both sides. Used by devMode's stack-icon click
+  // The AI's own stack contents — used by devMode's AI stack-icon click
   // (read-only inspector) AND as the source of per-type remaining counts
-  // for the AI hand swap-picker (getStackTypeCounts(aiStack)). Not used
-  // for anything visual otherwise — the stack icon itself still only ever
-  // displays playerStackCount/aiStackCount.
-  playerStack: CardType[];
+  // for the AI hand swap-picker (getStackTypeCounts(aiStack)). The
+  // player's stack no longer passes through Board at all (see above) — the
+  // player's own inspector now lives in PlayerStackControls.tsx instead.
   aiStack: CardType[];
   // [Dev Test Mode — Phase 3] Whether the Stack Inspector's per-row swap
   // picker is active. Confirmed scope: matches SHUFFLE_STACK's own window
   // exactly (any phase except 'reveal'/'gameover') — see App.tsx's
   // canShuffle, which this is passed the same value as.
   canEditStacks?: boolean;
-  // Swaps a card sitting IN a stack (opened via the Stack Inspector) for a
-  // different type, by exchanging its position with another card of that
-  // type already in that SAME stack — see useGameState.ts's
-  // DEV_SWAP_STACK_CARD. owner tells the caller which stack to dispatch
-  // against, since a single inspector instance only ever shows one side
-  // at a time but Board owns both.
-  onStackSwapCard?: (owner: Owner, cardId: string, newType: RPSType) => void;
+  // Swaps a card sitting IN the AI's stack (opened via the Stack
+  // Inspector) for a different type, by exchanging its position with
+  // another card of that type already in that SAME stack — see
+  // useGameState.ts's DEV_SWAP_STACK_CARD. No owner param needed here
+  // (unlike the pre-layout-change version) — this Board instance only
+  // ever opens the AI's own inspector now, so App.tsx fixes owner: 'ai' at
+  // the call site.
+  onStackSwapCard?: (cardId: string, newType: RPSType) => void;
   // Exposes DOM nodes for stack icons, discard piles, and slots up to
   // App.tsx by key (e.g. 'stack-player', 'discard-ai', 'slot-player-left')
   // so the return-flight animation can measure flight source/destination
@@ -221,30 +223,26 @@ export function Board({
   onAiCardClick,
   onAiSlotClick,
   onAiSwapCard,
-  playerStackCount,
   aiStackCount,
   playerDiscardCount,
   aiDiscardCount,
-  onShuffleStack,
-  canShuffle,
   dragonOverlayOwner,
   devMode = false,
-  playerStack,
   aiStack,
   canEditStacks = false,
   onStackSwapCard,
   registerRef,
 }: BoardProps) {
   // [Dev Test Mode — Phase 1: Stack Inspector]
-  // Which side's stack panel is currently open, if any. Local UI state
-  // only — mirrors CardTypePicker/Hand.tsx's editingCardId pattern (never
-  // touches GameState/reducer; purely a display concern). Toggling the
-  // same icon again closes it.
-  const [inspectorOwner, setInspectorOwner] = useState<Owner | null>(null);
+  // Whether the AI's stack panel is currently open. Simplified from a
+  // shared Owner|null toggle to a plain boolean now that Board only ever
+  // owns the AI-side inspector — the player's own inspector lives in
+  // PlayerStackControls.tsx instead (see the [Layout] note on BoardProps).
+  const [aiInspectorOpen, setAiInspectorOpen] = useState(false);
 
-  function handleStackClick(owner: Owner) {
+  function handleAiStackClick() {
     if (!devMode) return;
-    setInspectorOwner((prev) => (prev === owner ? null : owner));
+    setAiInspectorOpen((prev) => !prev);
   }
 
   // [Dev Test Mode — Phase 2: AI Hand Swap]
@@ -285,7 +283,7 @@ export function Board({
             count={aiStackCount}
             label="Opponent"
             elRef={(el) => registerRef?.('stack-ai', el)}
-            onClick={() => handleStackClick('ai')}
+            onClick={handleAiStackClick}
             clickable={devMode}
           />
           <DiscardPile
@@ -408,43 +406,29 @@ export function Board({
 
         </div>
 
-        {/* [SUB-BLOCK: Player Stack + Discard + Shuffle — right edge, floats toward player's row] */}
+        {/* [SUB-BLOCK: Player Discard — right edge, floats toward player's row]
+            Stack icon + Shuffle button moved out to PlayerStackControls.tsx,
+            rendered next to <Hand> in App.tsx — see the [Layout] note on
+            BoardProps. Discard stays here, unchanged. */}
         <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
-          <StackIcon
-            count={playerStackCount}
-            label="You"
-            elRef={(el) => registerRef?.('stack-player', el)}
-            onClick={() => handleStackClick('player')}
-            clickable={devMode}
-          />
           <DiscardPile
             count={playerDiscardCount}
             elRef={(el) => registerRef?.('discard-player', el)}
           />
-          <button
-            className={styles['stack-col__shuffle']}
-            onClick={onShuffleStack}
-            disabled={!canShuffle}
-            title="Shuffle your stack — breaks Smart AI's pattern read"
-          >
-            ⇄ Shuffle
-          </button>
         </div>
 
       </div>
 
-      {/* [SUB-BLOCK: Dev Test Mode — Phase 1: Stack Inspector panel / Phase 3: editing] */}
-      {devMode && inspectorOwner !== null && (
+      {/* [SUB-BLOCK: Dev Test Mode — Phase 1: Stack Inspector panel / Phase 3: editing]
+          AI-only now — the player's own inspector lives in
+          PlayerStackControls.tsx alongside the moved stack icon. */}
+      {devMode && aiInspectorOpen && (
         <StackInspector
-          owner={inspectorOwner}
-          stack={inspectorOwner === 'player' ? playerStack : aiStack}
-          onClose={() => setInspectorOwner(null)}
+          owner="ai"
+          stack={aiStack}
+          onClose={() => setAiInspectorOpen(false)}
           editable={canEditStacks}
-          onSwapCard={
-            onStackSwapCard
-              ? (cardId, newType) => onStackSwapCard(inspectorOwner, cardId, newType)
-              : undefined
-          }
+          onSwapCard={onStackSwapCard}
         />
       )}
     </>
