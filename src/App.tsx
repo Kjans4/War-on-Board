@@ -87,13 +87,14 @@ const RETURN_FLIGHT_MS = 450;
 // after it holds, 'done' reveals the outcome badges (already carrying the
 // Dragon's wipe/save effects, computed synchronously by the reducer).
 //
-// [Battle Phases — Phase 0] This builder is UNCHANGED for now — it still
-// only ever produces 'left'/'center'/'right'/'dragonOverlay'/'done' events,
-// same as before. 'phase1Resolve' and 'cascadeFight' are declared on
-// RevealStep and PHASE1_RESOLVE_HOLD_MS/CASCADE_FIGHT_MS exist above, but
-// neither is inserted into the timeline yet — that rewrite is Phase 1 of
-// battle-phases-plan.md, done separately so this change stays a pure
-// types-and-constants no-op.
+// [Battle Phases — Phase 1] This builder is still UNCHANGED — it only ever
+// produces 'left'/'center'/'right'/'dragonOverlay'/'done' events, and its
+// output is still what actually drives revealStep/history/return-flight/
+// next-round timing below. The real phase1Resolve -> cascadeFight(s) ->
+// done schedule now exists (see buildCascadeAwareSchedule below) and runs
+// for real against real pendingCascade data via a probe timer in the
+// reveal effect — but it only logs its result for verification so far. It
+// takes over from this builder's 'right'-onward output in Phase 2.
 interface StepEvent {
   step: RevealStep;
   at: number;
@@ -145,6 +146,49 @@ function buildRevealTimeline(dragonSlotIndex: number | null): { events: StepEven
   events.push({ step: 'done', at: doneAt });
 
   return { events, doneAt };
+}
+
+// [BLOCK: Battle Phases — Phase 1: Cascade-Aware Schedule (verification only)]
+// Computes the phase1Resolve -> cascadeFight(s) -> done schedule for a
+// non-Dragon round, given how many cascade fights actually happened this
+// round (cascade.log.length). This is the real scheduling logic Phase 2
+// will switch the live reveal sequence over to — but it is NOT YET WIRED
+// into setRevealStep or the downstream history/return-flight/next-round
+// timers (see battle-phases-plan.md's Phase 1 test note: "confirm event
+// ordering and timestamps are correct with no UI changes yet"). For now
+// it's only invoked by a probe timer below that logs its output for
+// manual verification against real pendingCascade data.
+//
+// Can't be computed synchronously alongside buildRevealTimeline() the way
+// Dragon detection is (via findDragonPlacement on pre-resolution slots) —
+// cascade.log only exists after resolveCascade() has actually run inside
+// the reducer, and dispatch is async relative to this effect. Re-running
+// resolveCascade() here to peek at the count early would double-mutate
+// card.exhausted (see combat.ts's resolveSlot / types/game.ts's
+// GameState.pendingResolution doc comment), so this must wait until
+// pendingCascade is genuinely populated — same pattern the return-flight
+// timer already uses via stateRef.
+interface Phase1Schedule {
+  events: StepEvent[];
+  doneAt: number; // same clock/origin as buildRevealTimeline's doneAt
+}
+
+function buildCascadeAwareSchedule(rightAt: number, cascadeFightCount: number): Phase1Schedule {
+  const phase1ResolveAt = rightAt; // fires immediately once all 3 lanes are face-up
+  let t = phase1ResolveAt + PHASE1_RESOLVE_HOLD_MS;
+
+  const events: StepEvent[] = [
+    { step: 'phase1Resolve', at: phase1ResolveAt },
+  ];
+
+  for (let i = 0; i < cascadeFightCount; i++) {
+    events.push({ step: 'cascadeFight', at: t });
+    t += CASCADE_FIGHT_MS;
+  }
+
+  events.push({ step: 'done', at: t });
+
+  return { events, doneAt: t };
 }
 
 // [BLOCK: Return-Flight Builder]
@@ -350,7 +394,45 @@ function App() {
       setDragonOverlayOwner(null);
     }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS + RETURN_FLIGHT_MS);
 
-    allTimers.current = [...stepTimers, historyTimer, returnFlightTimer, nextRoundTimer];
+    // [Battle Phases — Phase 1: verification probe]
+    // Non-Dragon rounds only — Dragon rounds never run a cascade, so
+    // there's nothing to schedule/verify (buildRevealTimeline's Dragon
+    // path already fully owns their timeline). Fires at the same instant
+    // as the 'right' step, once stateRef.current.pendingCascade is
+    // guaranteed to be populated (REVEAL_ROUND has long since landed by
+    // then), and logs what the real phase1Resolve/cascadeFight/done
+    // schedule WOULD be for this round. Does not call setRevealStep, does
+    // not touch historyTimer/returnFlightTimer/nextRoundTimer above — this
+    // round's actual pacing and visuals are completely unaffected. See
+    // buildCascadeAwareSchedule's doc comment for why this can't run any
+    // earlier than 'right'.
+    let probeTimer: ReturnType<typeof setTimeout> | null = null;
+    if (dragonSlotIndex === null) {
+      const rightEvent = events.find((e) => e.step === 'right');
+      const rightAt = rightEvent ? rightEvent.at : doneAt - RIGHT_TO_DONE_MS;
+
+      probeTimer = setTimeout(() => {
+        const cascade = stateRef.current.pendingCascade;
+        const cascadeFightCount = cascade?.log.length ?? 0;
+        const schedule = buildCascadeAwareSchedule(rightAt, cascadeFightCount);
+        // eslint-disable-next-line no-console
+        console.log('[Battle Phases — Phase 1 verification]', {
+          round,
+          cascadeTriggered: cascade?.triggered ?? false,
+          cascadeFightCount,
+          schedule,
+          currentLiveDoneAt: doneAt,
+        });
+      }, rightAt);
+    }
+
+    allTimers.current = [
+      ...stepTimers,
+      historyTimer,
+      returnFlightTimer,
+      nextRoundTimer,
+      ...(probeTimer ? [probeTimer] : []),
+    ];
 
     // intentionally no cleanup return — timers must survive reveal→resolution
     // eslint-disable-next-line react-hooks/exhaustive-deps
