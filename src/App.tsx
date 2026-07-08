@@ -38,6 +38,24 @@ const HISTORY_TO_NEXT_MS = 1500;
 const DRAGON_OVERLAY_DELAY_MS = 500;
 const DRAGON_OVERLAY_HOLD_MS = 1400;
 
+// [BLOCK: Battle Phases — Phase 0]
+// Timing for the two new reveal steps declared on RevealStep
+// (Board.tsx: 'phase1Resolve', 'cascadeFight') — see battle-phases-plan.md.
+// NOT YET WIRED into buildRevealTimeline; declared here only so Phase 1 of
+// the plan (timeline builder rewrite) has constants ready to consume.
+//
+// PHASE1_RESOLVE_HOLD_MS: how long the Phase 1 resolve beat holds — all 3
+// lanes revealed, non-cascade-pending outcomes (lost/tied-lost/tied) final
+// and their flights fired — before either the first cascadeFight step or
+// 'done' (if no cascade runs) begins.
+//
+// CASCADE_FIGHT_MS: duration of a single cascade fight beat. The Phase 1
+// timeline rewrite will insert one of these per cascade.log entry
+// (cascade.log.length total), each ending in that fight's loser being
+// discarded — see combat.ts's resolveCascade/CascadeFightLog.
+const PHASE1_RESOLVE_HOLD_MS = 900;
+const CASCADE_FIGHT_MS = 1100;
+
 // [BLOCK: AI Placement Timing]
 // How long after entering 'placement' the AI commits its 3 cards,
 // independent of when the player finishes their own — see the new timer
@@ -68,6 +86,14 @@ const RETURN_FLIGHT_MS = 450;
 // order). After a short pause, the 'dragonOverlay' step shows the banner;
 // after it holds, 'done' reveals the outcome badges (already carrying the
 // Dragon's wipe/save effects, computed synchronously by the reducer).
+//
+// [Battle Phases — Phase 0] This builder is UNCHANGED for now — it still
+// only ever produces 'left'/'center'/'right'/'dragonOverlay'/'done' events,
+// same as before. 'phase1Resolve' and 'cascadeFight' are declared on
+// RevealStep and PHASE1_RESOLVE_HOLD_MS/CASCADE_FIGHT_MS exist above, but
+// neither is inserted into the timeline yet — that rewrite is Phase 1 of
+// battle-phases-plan.md, done separately so this change stays a pure
+// types-and-constants no-op.
 interface StepEvent {
   step: RevealStep;
   at: number;
@@ -134,6 +160,10 @@ function buildRevealTimeline(dragonSlotIndex: number | null): { events: StepEven
 // dragon, cascaded) targets their own discard pile — mirroring the
 // survivor-vs-discard split in useGameState.ts's NEXT_ROUND case exactly,
 // but read-only.
+//
+// [Battle Phases — Phase 0] Unchanged — still the single, round-end-only
+// flight wave. Splitting this into a Phase 1 wave + per-cascade-fight
+// wave(s) + final wave is Phase 2/3/4 of battle-phases-plan.md.
 function buildReturnFlights(
   resolution: RoundResolution,
   refs: Record<string, HTMLElement | null>

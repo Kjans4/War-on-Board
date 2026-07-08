@@ -14,14 +14,35 @@ import styles from '../styles/Board.module.css';
 
 // [BLOCK: Reveal Step Type]
 // Exported so App.tsx can type its local animation state.
-// null        = not in reveal sequence (placement or post-resolution)
-// flipping    = Play clicked, all cards flip face-down (2s pause before reveal starts)
-// left        = left slot revealing
-// center      = left + center revealed
-// right       = all 3 slots revealed
+// null          = not in reveal sequence (placement or post-resolution)
+// flipping      = Play clicked, all cards flip face-down (2s pause before reveal starts)
+// left          = left slot revealing
+// center        = left + center revealed
+// right         = all 3 slots revealed
+// phase1Resolve = [Battle Phases — Phase 0] "Phase 1" resolve beat: all 3
+//   lanes are revealed and their raw RPS/exhausted outcome is settled —
+//   lost/tied-lost/tied lanes are final here and fly to discard/stack;
+//   lanes that won their RPS matchup but are still cascade-pending stay
+//   dark until their cascadeFight step (or 'done', if no cascade runs).
+//   NOT YET WIRED — no code sets this value yet (Phase 1 of the plan).
+// cascadeFight  = [Battle Phases — Phase 0] one beat per cascade.log entry,
+//   fired sequentially — the losing card of that specific fight is
+//   discarded, the winner keeps standing. NOT YET WIRED — no code sets
+//   this value yet, and there is currently no per-entry index tracked
+//   alongside it (that bookkeeping arrives with the Phase 1 timeline
+//   rewrite + Phase 3 fight visual).
 // dragonOverlay = all 3 revealed, "Dragon Attack" banner showing (Dragon rounds only)
-// done        = all revealed, outcome badges shown, awaiting Next Round
-export type RevealStep = null | 'flipping' | 'left' | 'center' | 'right' | 'dragonOverlay' | 'done';
+// done          = all revealed, outcome badges shown, awaiting Next Round
+export type RevealStep =
+  | null
+  | 'flipping'
+  | 'left'
+  | 'center'
+  | 'right'
+  | 'phase1Resolve'
+  | 'cascadeFight'
+  | 'dragonOverlay'
+  | 'done';
 
 // [BLOCK: Per-slot visual state]
 // Given the current reveal step, returns whether each slot should be shown
@@ -33,6 +54,12 @@ export type RevealStep = null | 'flipping' | 'left' | 'center' | 'right' | 'drag
 // 'dragonOverlay' is treated like being fully revealed (same as 'right'/
 // 'done') but with outcome badges still withheld until 'done' — the banner
 // plays over already-face-up cards, badges pop in only once it's done.
+//
+// [Battle Phases — Phase 0] 'phase1Resolve' and 'cascadeFight' are declared
+// on RevealStep but intentionally NOT handled here yet — no dispatch path
+// currently sets revealStep to either value, so this function's existing
+// behavior is unaffected for now. Phase 2/3 of the plan will teach this
+// function what each of those two steps should show per-slot.
 function slotVisuals(
   slotKey: SlotKey,
   revealStep: RevealStep,
