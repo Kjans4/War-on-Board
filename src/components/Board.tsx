@@ -120,6 +120,18 @@ interface BoardProps {
   // displays playerStackCount/aiStackCount.
   playerStack: CardType[];
   aiStack: CardType[];
+  // [Dev Test Mode — Phase 3] Whether the Stack Inspector's per-row swap
+  // picker is active. Confirmed scope: matches SHUFFLE_STACK's own window
+  // exactly (any phase except 'reveal'/'gameover') — see App.tsx's
+  // canShuffle, which this is passed the same value as.
+  canEditStacks?: boolean;
+  // Swaps a card sitting IN a stack (opened via the Stack Inspector) for a
+  // different type, by exchanging its position with another card of that
+  // type already in that SAME stack — see useGameState.ts's
+  // DEV_SWAP_STACK_CARD. owner tells the caller which stack to dispatch
+  // against, since a single inspector instance only ever shows one side
+  // at a time but Board owns both.
+  onStackSwapCard?: (owner: Owner, cardId: string, newType: RPSType) => void;
   // Exposes DOM nodes for stack icons, discard piles, and slots up to
   // App.tsx by key (e.g. 'stack-player', 'discard-ai', 'slot-player-left')
   // so the return-flight animation can measure flight source/destination
@@ -219,6 +231,8 @@ export function Board({
   devMode = false,
   playerStack,
   aiStack,
+  canEditStacks = false,
+  onStackSwapCard,
   registerRef,
 }: BoardProps) {
   // [Dev Test Mode — Phase 1: Stack Inspector]
@@ -420,12 +434,18 @@ export function Board({
 
       </div>
 
-      {/* [SUB-BLOCK: Dev Test Mode — Phase 1: Stack Inspector panel] */}
+      {/* [SUB-BLOCK: Dev Test Mode — Phase 1: Stack Inspector panel / Phase 3: editing] */}
       {devMode && inspectorOwner !== null && (
         <StackInspector
           owner={inspectorOwner}
           stack={inspectorOwner === 'player' ? playerStack : aiStack}
           onClose={() => setInspectorOwner(null)}
+          editable={canEditStacks}
+          onSwapCard={
+            onStackSwapCard
+              ? (cardId, newType) => onStackSwapCard(inspectorOwner, cardId, newType)
+              : undefined
+          }
         />
       )}
     </>

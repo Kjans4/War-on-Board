@@ -94,6 +94,15 @@ export type GameAction =
   // Dragon is excluded from the swap picker entirely (see
   // CardTypePicker.tsx / dev-test-mode-plan.md's standing conflict note).
   | { type: 'DEV_SWAP_HAND_CARD'; owner: Owner; cardId: string; newType: RPSType }
+  // [Dev Test Mode — Phase 3] Swap a card SITTING IN THE STACK (opened via
+  // the Phase 1 Stack Inspector) for a different type — never fabricates
+  // or removes a card, just swaps positions with another card of the
+  // chosen type already in that SAME stack (see logic/deck.ts's
+  // getStackTypeCounts(stack, excludeId), which was built ahead of this
+  // phase specifically to support it). Gated identically to SHUFFLE_STACK
+  // (any phase except 'reveal'/'gameover') rather than 'placement' only —
+  // confirmed scope: both player's and AI's stacks are editable this way.
+  | { type: 'DEV_SWAP_STACK_CARD'; owner: Owner; cardId: string; newType: RPSType }
   | { type: 'RESTART' };
 
 // [BLOCK: Validation Helpers]
@@ -532,6 +541,39 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return owner === 'player'
         ? { ...state, playerHand: newHand, playerStack: newStack }
         : { ...state, aiHand: newHand, aiStack: newStack };
+    }
+
+    // -- [Dev Test Mode — Phase 3: Direct Stack Editing]
+    //    Swaps a card already sitting IN a stack for a different type, by
+    //    exchanging its position with another card of that type elsewhere
+    //    in the SAME stack — never adds, removes, or fabricates a card
+    //    (see getStackTypeCounts(stack, excludeId) in deck.ts, which
+    //    already excludes the card being edited from its own counts for
+    //    exactly this reason). Gated the same way SHUFFLE_STACK is (any
+    //    phase except 'reveal'/'gameover') rather than 'placement' only —
+    //    confirmed scope for this phase. No-ops if the card isn't found in
+    //    that owner's stack, or if there's no OTHER card of newType there
+    //    to swap with (mirrors CardTypePicker's own disabled-option guard,
+    //    re-checked here in case stack contents shifted between render and
+    //    dispatch). exhausted flags on both cards are left untouched.
+    case 'DEV_SWAP_STACK_CARD': {
+      if (state.phase === 'reveal' || state.phase === 'gameover') return state;
+
+      const { owner, cardId, newType } = action;
+      const stack = owner === 'player' ? state.playerStack : state.aiStack;
+
+      const cardIndex = stack.findIndex((c) => c.id === cardId);
+      if (cardIndex === -1) return state;
+
+      const swapIndex = stack.findIndex((c, i) => i !== cardIndex && c.type === newType);
+      if (swapIndex === -1) return state; // no other card of that type in this stack
+
+      const newStack = [...stack];
+      [newStack[cardIndex], newStack[swapIndex]] = [newStack[swapIndex], newStack[cardIndex]];
+
+      return owner === 'player'
+        ? { ...state, playerStack: newStack }
+        : { ...state, aiStack: newStack };
     }
 
     // -- Restart the game entirely

@@ -484,6 +484,10 @@ function App() {
                 devMode={devMode}
                 playerStack={playerStack}
                 aiStack={aiStack}
+                canEditStacks={canShuffle}
+                onStackSwapCard={(owner, cardId, newType) =>
+                  dispatch({ type: 'DEV_SWAP_STACK_CARD', owner, cardId, newType })
+                }
                 registerRef={registerRef}
               />
               <Hand
