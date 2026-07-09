@@ -501,18 +501,27 @@ function App() {
     setRevealStep('flipping');
 
     // [SUB-BLOCK: schedule downstream history/return-flight/next-round
-    // timers off a given doneAt] Shared by both the Dragon branch (doneAt
-    // known upfront) and the non-Dragon branch (doneAt only known once the
-    // cascade-aware schedule has been computed inside the 'right' timer).
+    // timers off a given delay] `doneDelay` is milliseconds from THE
+    // MOMENT THIS FUNCTION IS CALLED, not an absolute offset from
+    // REVEAL_ROUND dispatch — the two call sites below are NOT at the same
+    // point in time, so this matters:
+    //   - Dragon branch calls it synchronously, right after dispatch — "now"
+    //     really is 0, so buildDragonTimeline's doneAt (already relative to
+    //     dispatch) can be passed straight through.
+    //   - Non-Dragon branch calls it from INSIDE the timer that fires at
+    //     rightAt — "now" is already rightAt by then, so the caller must
+    //     pass buildCascadeAwareSchedule's doneAt MINUS rightAt, or every
+    //     downstream timer fires rightAt milliseconds later than intended
+    //     (silently, since nothing throws — just a slow-motion round).
     // skipOutcomes is passed straight through to buildReturnFlights — see
     // its doc comment. Also resets cascadeFightIndex back to null, whether
     // or not this round ever set it, so it never leaks into next round's
     // early steps.
-    function scheduleEndOfRoundTimers(doneAt: number, skipOutcomes: Set<CombatOutcome>) {
+    function scheduleEndOfRoundTimers(doneDelay: number, skipOutcomes: Set<CombatOutcome>) {
       const historyTimer = setTimeout(() => {
         historyRecordedForRound.current = round;
         dispatch({ type: 'RECORD_HISTORY' });
-      }, doneAt + DONE_TO_HISTORY_MS);
+      }, doneDelay + DONE_TO_HISTORY_MS);
       allTimers.current.push(historyTimer);
 
       const returnFlightTimer = setTimeout(() => {
@@ -520,7 +529,7 @@ function App() {
         if (latest.pendingResolution) {
           setFlights(buildReturnFlights(latest.pendingResolution, elementRefs.current, skipOutcomes));
         }
-      }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS);
+      }, doneDelay + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS);
       allTimers.current.push(returnFlightTimer);
 
       const nextRoundTimer = setTimeout(() => {
@@ -529,12 +538,14 @@ function App() {
         setRevealStep(null);
         setDragonOverlayOwner(null);
         setCascadeFightIndex(null);
-      }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS + RETURN_FLIGHT_MS);
+      }, doneDelay + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS + RETURN_FLIGHT_MS);
       allTimers.current.push(nextRoundTimer);
     }
 
     if (dragonSlotIndex !== null) {
       // [Dragon branch — unchanged from before Battle Phases existed]
+      // Called synchronously at dispatch time, so doneAt IS the delay from
+      // "now" — no adjustment needed.
       const { events, doneAt } = buildDragonTimeline(dragonSlotIndex);
       for (const e of events) {
         const t = setTimeout(() => setRevealStep(e.step), e.at);
@@ -608,7 +619,12 @@ function App() {
         }
       }
 
-      scheduleEndOfRoundTimers(doneAt, EARLY_FLIGHT_OUTCOMES);
+      // We're already running at rightAt (this whole callback fired at
+      // rightAt), so doneAt — which is absolute-since-dispatch and
+      // includes rightAt within it — must have rightAt subtracted back out
+      // to become a valid "from now" delay. See scheduleEndOfRoundTimers'
+      // doc comment above.
+      scheduleEndOfRoundTimers(doneAt - rightAt, EARLY_FLIGHT_OUTCOMES);
     }, rightAt);
     allTimers.current.push(rightTimer);
 
