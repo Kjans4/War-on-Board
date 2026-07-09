@@ -22,13 +22,15 @@ import styles from '../styles/Board.module.css';
 // phase1Resolve = [Battle Phases] "Phase 1" resolve beat — all 3 lanes are
 //   face-up; lost/tied-lost/tied lanes are final and their outcome badges
 //   pop here (see slotVisuals). Lanes that won their RPS matchup but are
-//   still cascade-pending stay dark until 'done' (their own per-fight beat
-//   arrives in a later phase — see battle-phases-plan.md's Phase 3).
+//   still cascade-pending stay dark until THEIR OWN cascade fight beat
+//   resolves (see hasCascadeLaneResolved below), or 'done' if the cascade
+//   never eliminates them at all.
 // cascadeFight  = [Battle Phases] one beat per cascade.log entry, fired
-//   sequentially by App.tsx. Currently treated identically to
-//   phase1Resolve by slotVisuals below — cascade-pending lanes still wait
-//   for 'done'; giving each individual fight its own distinct reveal +
-//   flight is Phase 3's job, not yet implemented.
+//   sequentially by App.tsx alongside a matching cascadeFightIndex. The
+//   two lanes contesting THAT SPECIFIC beat get a glow accent (see
+//   isCurrentCascadeFightSlot), and the beat's loser (per
+//   hasCascadeLaneResolved) reveals its badge immediately — the winner
+//   stays dark, since it may still be challenged again in a later beat.
 // dragonOverlay = all 3 revealed, "Dragon Attack" banner showing (Dragon rounds only)
 // done          = all revealed, outcome badges shown, awaiting Next Round
 export type RevealStep =
@@ -45,8 +47,8 @@ export type RevealStep =
 // [BLOCK: Cascade Participation Helper]
 // [Battle Phases] Determines whether a given (owner, slotKey) lane entered
 // the cascade fight at all this round — i.e. whether its final outcome
-// badge should stay withheld past phase1Resolve/cascadeFight instead of
-// popping immediately like a plain lost/tied/tied-lost lane.
+// badge should stay withheld past phase1Resolve instead of popping
+// immediately like a plain lost/tied/tied-lost lane.
 //
 // Deliberately reads ONLY pendingCascade's own overrides/survivingSlots —
 // never re-derives lane-winners itself (that would mean re-running
@@ -73,6 +75,65 @@ function isCascadePending(
   return cascade.survivingSlots.some((s) => `${s.slotKey}-${s.owner}` === key);
 }
 
+// [BLOCK: Per-Fight Resolution Helper]
+// [Battle Phases — Phase 3] For a cascade-pending lane, determines whether
+// IT SPECIFICALLY has already lost its own cascade fight by the current
+// beat (cascadeFightIndex) — i.e. whether its badge should pop now rather
+// than waiting for 'done'. Only ever meaningful while stepping through
+// cascade.log in order (indices 0..cascadeFightIndex inclusive) — a lane
+// that's still winning (or hasn't fought yet) deliberately stays dark
+// here even after its own beat, since a persisting champion could still
+// fall to a LATER challenger; revealing "Win" prematurely would risk
+// having to silently flip it to "Cascaded" afterward, exactly the
+// spoiler/two-step problem Battle Phases exists to avoid. Only the
+// eliminated side of a resolved fight is ever reported true.
+function hasCascadeLaneResolved(
+  cascade: CascadeResult | null,
+  cascadeFightIndex: number | null,
+  owner: Owner,
+  slotKey: SlotKey
+): boolean {
+  if (!cascade || cascadeFightIndex === null) return false;
+  const target = `${slotKey}-${owner}`;
+
+  for (let i = 0; i <= cascadeFightIndex && i < cascade.log.length; i++) {
+    const entry = cascade.log[i];
+    const championKey = `${entry.championSlot}-${entry.championOwner}`;
+    const challengerKey = `${entry.challengerSlot}-${entry.challengerOwner}`;
+
+    if (entry.outcome === 'championWon' && challengerKey === target) return true;
+    if (entry.outcome === 'challengerWon' && championKey === target) return true;
+    if (entry.outcome === 'tiedLost' && (championKey === target || challengerKey === target)) return true;
+    // plain 'tied' eliminates neither side — both withdraw as survivors,
+    // so it never marks either lane "resolved" here; they wait for 'done'.
+  }
+
+  return false;
+}
+
+// [BLOCK: Current Fight Glow Helper]
+// [Battle Phases — Phase 3] True for exactly the two slots (always one per
+// owner — see combat.ts's resolveCascade, which only ever fights across
+// owners, never same-owner) contesting the fight at cascade.log[index],
+// where index === cascadeFightIndex (the beat currently playing, not any
+// earlier or later one). Purely a visual accent — see Slot.tsx's
+// fightGlow prop / CascadeGlow.module.css.
+function isCurrentCascadeFightSlot(
+  cascade: CascadeResult | null,
+  cascadeFightIndex: number | null,
+  owner: Owner,
+  slotKey: SlotKey
+): boolean {
+  if (!cascade || cascadeFightIndex === null) return false;
+  const entry = cascade.log[cascadeFightIndex];
+  if (!entry) return false;
+
+  return (
+    (entry.championSlot === slotKey && entry.championOwner === owner) ||
+    (entry.challengerSlot === slotKey && entry.challengerOwner === owner)
+  );
+}
+
 // [BLOCK: Per-slot visual state]
 // Given the current reveal step, returns whether each slot should be shown
 // face-down and whether its outcome badge/glow should be visible.
@@ -82,27 +143,28 @@ function isCascadePending(
 //
 // [Battle Phases] Badge timing, current rules:
 //   - flipping/left/center/right: cards flip face-up per the existing
-//     stagger, but NO badges yet regardless of lane — this is a change
-//     from the prior behavior where a lane's badge popped the instant
-//     its own slot flipped. Now ALL badges wait at minimum until
-//     phase1Resolve, so "all 3 cards battle" reads as one simultaneous
-//     beat rather than a trickle.
+//     stagger, but NO badges yet regardless of lane —"all 3 cards battle"
+//     reads as one simultaneous beat rather than a trickle.
 //   - phase1Resolve / cascadeFight: non-cascade-pending lanes (lost,
 //     tied, tied-lost, or the sole winner of a no-cascade round) show
-//     their badge immediately. Cascade-pending lanes (cascadePending
-//     true) stay dark — their own reveal beat isn't wired yet (Phase 3),
-//     so for now they wait for 'done'.
+//     their badge immediately. Cascade-pending lanes show their badge the
+//     moment cascadeLaneResolved is true for them (their own fight just
+//     eliminated them — see hasCascadeLaneResolved) and stay dark
+//     otherwise, including for a still-winning champion awaiting a later
+//     challenger.
 //   - dragonOverlay: no badges — the banner plays over face-up cards,
 //     badges wait for 'done' (Dragon rounds never set cascadePending
 //     true, so this branch is unaffected by cascade logic entirely).
 //   - done: every lane's badge shows, unconditionally — the final
-//     catch-all, unchanged from before.
+//     catch-all for any cascade survivor that was never individually
+//     eliminated.
 function slotVisuals(
   slotKey: SlotKey,
   revealStep: RevealStep,
   hasCard: boolean,
   hideDuringPlacement: boolean,
   cascadePending: boolean,
+  cascadeLaneResolved: boolean,
 ): { visuallyFaceDown: boolean; showOutcome: boolean } {
   if (revealStep === null) {
     // Pre-reveal — either mid-placement, or the brief gap between rounds.
@@ -130,7 +192,8 @@ function slotVisuals(
   }
 
   if (revealStep === 'phase1Resolve' || revealStep === 'cascadeFight') {
-    return { visuallyFaceDown: false, showOutcome: !cascadePending };
+    const revealed = !cascadePending || cascadeLaneResolved;
+    return { visuallyFaceDown: false, showOutcome: revealed };
   }
 
   // flipping / left / center / right — card-flip stagger only. Badges
@@ -190,11 +253,16 @@ interface BoardProps {
   dragonOverlayOwner: Owner | null;
   // [Battle Phases] The round's already-computed cascade result (or null
   // pre-reveal / post-round-end) — read-only, used purely to determine
-  // per-lane cascade participation for slotVisuals via isCascadePending
-  // above. Never used to derive outcome labels themselves (those still
-  // come from each Slot's own `state`, set by the reducer) — only to
-  // decide WHEN a lane's already-known outcome is allowed to show.
+  // per-lane cascade participation for slotVisuals via isCascadePending /
+  // hasCascadeLaneResolved / isCurrentCascadeFightSlot above. Never used
+  // to derive outcome labels themselves (those still come from each
+  // Slot's own `state`, set by the reducer) — only to decide WHEN a
+  // lane's already-known outcome is allowed to show, and which slots glow.
   pendingCascade: CascadeResult | null;
+  // [Battle Phases — Phase 3] Which cascade.log entry is currently
+  // playing (0-based), or null when no cascade fight beat is in progress
+  // (before/after the cascade, or a round with no cascade at all).
+  cascadeFightIndex: number | null;
   // [Dev Test Mode — Phase 1] When true, the AI's hand renders face-up
   // instead of face-down. See dev-test-mode-plan.md. Does not affect any
   // combat/reveal logic — purely a visibility toggle over the opponent
@@ -314,6 +382,7 @@ export function Board({
   aiDiscardCount,
   dragonOverlayOwner,
   pendingCascade,
+  cascadeFightIndex,
   devMode = false,
   aiStack,
   canEditStacks = false,
@@ -431,12 +500,15 @@ export function Board({
             <div className={styles.battlefield__slots}>
               {SLOT_KEYS.map((key) => {
                 const cascadePending = isCascadePending(pendingCascade, 'ai', key);
+                const cascadeLaneResolved = hasCascadeLaneResolved(pendingCascade, cascadeFightIndex, 'ai', key);
+                const fightGlow = isCurrentCascadeFightSlot(pendingCascade, cascadeFightIndex, 'ai', key);
                 const { visuallyFaceDown, showOutcome } = slotVisuals(
                   key,
                   revealStep,
                   !!aiSlots[key].card,
                   !devMode,
                   cascadePending,
+                  cascadeLaneResolved,
                 );
                 const aiSlot = aiSlots[key];
                 const aiClickable = aiEditable && (aiSlot.card !== null || selectedAiCardId !== null);
@@ -447,6 +519,7 @@ export function Board({
                     owner="ai"
                     visuallyFaceDown={visuallyFaceDown}
                     showOutcome={showOutcome}
+                    fightGlow={fightGlow}
                     onClick={() => onAiSlotClick?.(key)}
                     clickable={aiClickable}
                     elRef={(el) => registerRef?.(`slot-ai-${key}`, el)}
@@ -467,12 +540,15 @@ export function Board({
               {SLOT_KEYS.map((key) => {
                 const slot = playerSlots[key];
                 const cascadePending = isCascadePending(pendingCascade, 'player', key);
+                const cascadeLaneResolved = hasCascadeLaneResolved(pendingCascade, cascadeFightIndex, 'player', key);
+                const fightGlow = isCurrentCascadeFightSlot(pendingCascade, cascadeFightIndex, 'player', key);
                 const { visuallyFaceDown, showOutcome } = slotVisuals(
                   key,
                   revealStep,
                   !!slot.card,
                   false,
                   cascadePending,
+                  cascadeLaneResolved,
                 );
                 const clickable = placementActive && (slot.card !== null || selectedCardId !== null);
                 return (
@@ -482,6 +558,7 @@ export function Board({
                     owner="player"
                     visuallyFaceDown={visuallyFaceDown}
                     showOutcome={showOutcome}
+                    fightGlow={fightGlow}
                     onClick={() => onSlotClick(key)}
                     clickable={clickable}
                     elRef={(el) => registerRef?.(`slot-player-${key}`, el)}

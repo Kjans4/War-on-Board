@@ -18,6 +18,8 @@ import type {
   SlotKey,
   Owner,
   RoundResolution,
+  CombatOutcome,
+  CascadeFightLog,
 } from './types/game';
 import { SLOT_KEYS } from './types/game';
 import styles from './styles/App.module.css';
@@ -38,21 +40,18 @@ const HISTORY_TO_NEXT_MS = 1500;
 const DRAGON_OVERLAY_DELAY_MS = 500;
 const DRAGON_OVERLAY_HOLD_MS = 1400;
 
-// [BLOCK: Battle Phases — Phase 0]
-// Timing for the two new reveal steps declared on RevealStep
-// (Board.tsx: 'phase1Resolve', 'cascadeFight') — see battle-phases-plan.md.
-// NOT YET WIRED into buildRevealTimeline; declared here only so Phase 1 of
-// the plan (timeline builder rewrite) has constants ready to consume.
-//
+// [BLOCK: Battle Phases — Timing]
 // PHASE1_RESOLVE_HOLD_MS: how long the Phase 1 resolve beat holds — all 3
 // lanes revealed, non-cascade-pending outcomes (lost/tied-lost/tied) final
 // and their flights fired — before either the first cascadeFight step or
 // 'done' (if no cascade runs) begins.
 //
-// CASCADE_FIGHT_MS: duration of a single cascade fight beat. The Phase 1
-// timeline rewrite will insert one of these per cascade.log entry
-// (cascade.log.length total), each ending in that fight's loser being
-// discarded — see combat.ts's resolveCascade/CascadeFightLog.
+// CASCADE_FIGHT_MS: duration of a single cascade fight beat. One of these
+// is scheduled per cascade.log entry (cascade.log.length total) — see
+// combat.ts's resolveCascade/CascadeFightLog. Glow + reveal + flight for
+// that beat's loser all fire together at the start of the beat (see
+// buildCascadeFightFlights) — the remaining CASCADE_FIGHT_MS is just a
+// readable hold before the next beat (or 'done') begins.
 const PHASE1_RESOLVE_HOLD_MS = 900;
 const CASCADE_FIGHT_MS = 1100;
 
@@ -71,52 +70,24 @@ const AI_PLACEMENT_DELAY_MS = 2000;
 // design: pacing takes a back seat to letting the flight read clearly).
 const RETURN_FLIGHT_MS = 450;
 
-// [BLOCK: Reveal Timeline Builder]
-// Produces the ordered list of {step, at} events to schedule as timeouts,
-// plus the final "done" timestamp (from which RECORD_HISTORY / NEXT_ROUND
-// are scheduled, unchanged from before).
-//
-// Non-Dragon rounds: unchanged staggered Left -> Center -> Right -> done.
-//
-// Dragon rounds: reveal proceeds normally up to and including the Dragon's
-// own slot; the moment the Dragon's slot would reveal, any slots that
-// haven't revealed yet jump ahead and reveal simultaneously with it
-// (achieved by jumping straight to the 'right' step, which — per
-// Board.tsx's slotVisuals — reveals all 3 slots at once regardless of
-// order). After a short pause, the 'dragonOverlay' step shows the banner;
-// after it holds, 'done' reveals the outcome badges (already carrying the
-// Dragon's wipe/save effects, computed synchronously by the reducer).
-//
-// [Battle Phases — Phase 1] This builder is still UNCHANGED — it only ever
-// produces 'left'/'center'/'right'/'dragonOverlay'/'done' events, and its
-// output is still what actually drives revealStep/history/return-flight/
-// next-round timing below. The real phase1Resolve -> cascadeFight(s) ->
-// done schedule now exists (see buildCascadeAwareSchedule below) and runs
-// for real against real pendingCascade data via a probe timer in the
-// reveal effect — but it only logs its result for verification so far. It
-// takes over from this builder's 'right'-onward output in Phase 2.
+// [BLOCK: Reveal Timeline Types]
 interface StepEvent {
   step: RevealStep;
   at: number;
 }
 
-function buildRevealTimeline(dragonSlotIndex: number | null): { events: StepEvent[]; doneAt: number } {
-  if (dragonSlotIndex === null) {
-    const leftAt = FLIP_TO_LEFT_MS;
-    const centerAt = leftAt + LEFT_TO_CENTER_MS;
-    const rightAt = centerAt + CENTER_TO_RIGHT_MS;
-    const doneAt = rightAt + RIGHT_TO_DONE_MS;
-    return {
-      events: [
-        { step: 'left', at: leftAt },
-        { step: 'center', at: centerAt },
-        { step: 'right', at: rightAt },
-        { step: 'done', at: doneAt },
-      ],
-      doneAt,
-    };
-  }
-
+// [BLOCK: Dragon Timeline Builder]
+// Dragon rounds never run a cascade (combat.ts's roundHasDragon gates
+// resolveCascade off entirely for them — see REVEAL_ROUND in
+// useGameState.ts), so their full timeline is knowable synchronously,
+// exactly as before Battle Phases existed. Reveal proceeds normally up to
+// and including the Dragon's own slot; the moment the Dragon's slot would
+// reveal, any slots that haven't revealed yet jump ahead and reveal
+// simultaneously with it (achieved by jumping straight to the 'right'
+// step, which — per Board.tsx's slotVisuals — reveals all 3 slots at once
+// regardless of order). After a short pause, 'dragonOverlay' shows the
+// banner; after it holds, 'done' reveals the outcome badges.
+function buildDragonTimeline(dragonSlotIndex: number): { events: StepEvent[]; doneAt: number } {
   const events: StepEvent[] = [];
   let t = FLIP_TO_LEFT_MS;
 
@@ -148,33 +119,49 @@ function buildRevealTimeline(dragonSlotIndex: number | null): { events: StepEven
   return { events, doneAt };
 }
 
-// [BLOCK: Battle Phases — Phase 1: Cascade-Aware Schedule (verification only)]
+// [BLOCK: Left/Center/Right Builder — non-Dragon rounds]
+// Non-Dragon rounds share this fixed stagger regardless of what happens
+// afterward — it doesn't depend on cascade data, so it's still knowable
+// synchronously at REVEAL_ROUND dispatch time.
+function buildLeftCenterRightEvents(): { events: StepEvent[]; rightAt: number } {
+  const leftAt = FLIP_TO_LEFT_MS;
+  const centerAt = leftAt + LEFT_TO_CENTER_MS;
+  const rightAt = centerAt + CENTER_TO_RIGHT_MS;
+  return {
+    events: [
+      { step: 'left', at: leftAt },
+      { step: 'center', at: centerAt },
+      { step: 'right', at: rightAt },
+    ],
+    rightAt,
+  };
+}
+
+// [BLOCK: Battle Phases — Cascade-Aware Schedule]
 // Computes the phase1Resolve -> cascadeFight(s) -> done schedule for a
 // non-Dragon round, given how many cascade fights actually happened this
-// round (cascade.log.length). This is the real scheduling logic Phase 2
-// will switch the live reveal sequence over to — but it is NOT YET WIRED
-// into setRevealStep or the downstream history/return-flight/next-round
-// timers (see battle-phases-plan.md's Phase 1 test note: "confirm event
-// ordering and timestamps are correct with no UI changes yet"). For now
-// it's only invoked by a probe timer below that logs its output for
-// manual verification against real pendingCascade data.
+// round (cascade.log.length). Can't be computed synchronously alongside
+// buildLeftCenterRightEvents the way Dragon detection is (via
+// findDragonPlacement on pre-resolution slots) — cascade.log only exists
+// after resolveCascade() has actually run inside the reducer, and dispatch
+// is async relative to the effect that calls this. The reveal effect below
+// calls this from inside a timer fired at rightAt, once
+// stateRef.current.pendingCascade is guaranteed to be populated.
+// Re-running resolveCascade() early to peek at the count instead would
+// double-mutate card.exhausted (see combat.ts's resolveSlot /
+// types/game.ts's GameState.pendingResolution doc comment), so waiting is
+// required, not just convenient.
 //
-// Can't be computed synchronously alongside buildRevealTimeline() the way
-// Dragon detection is (via findDragonPlacement on pre-resolution slots) —
-// cascade.log only exists after resolveCascade() has actually run inside
-// the reducer, and dispatch is async relative to this effect. Re-running
-// resolveCascade() here to peek at the count early would double-mutate
-// card.exhausted (see combat.ts's resolveSlot / types/game.ts's
-// GameState.pendingResolution doc comment), so this must wait until
-// pendingCascade is genuinely populated — same pattern the return-flight
-// timer already uses via stateRef.
+// phase1ResolveAt keeps the same RIGHT_TO_DONE_MS pause that used to sit
+// between 'right' and 'done' — cards hold face-up for a beat before
+// results start resolving, same pacing as before Battle Phases existed.
 interface Phase1Schedule {
   events: StepEvent[];
-  doneAt: number; // same clock/origin as buildRevealTimeline's doneAt
+  doneAt: number; // same clock/origin as rightAt (time since REVEAL_ROUND dispatch)
 }
 
 function buildCascadeAwareSchedule(rightAt: number, cascadeFightCount: number): Phase1Schedule {
-  const phase1ResolveAt = rightAt; // fires immediately once all 3 lanes are face-up
+  const phase1ResolveAt = rightAt + RIGHT_TO_DONE_MS;
   let t = phase1ResolveAt + PHASE1_RESOLVE_HOLD_MS;
 
   const events: StepEvent[] = [
@@ -191,24 +178,17 @@ function buildCascadeAwareSchedule(rightAt: number, cascadeFightCount: number): 
   return { events, doneAt: t };
 }
 
-// [BLOCK: Return-Flight Builder]
-// Reads the round's ALREADY-COMPUTED, cascade-relabeled resolution (see
-// useGameState.ts's REVEAL_ROUND "Cascade Relabeling" sub-block — any lane
-// a cascade fight overrode already reads 'cascaded' there, not 'won', so
-// survival can be read directly off resolution.player/ai with no separate
-// cross-reference against pendingCascade needed). Never recomputes
-// resolveRound/resolveCascade itself — see types/game.ts's
-// GameState.pendingResolution doc comment on why re-running them would
-// corrupt exhausted-flag mutations. Produces one flight per placed card:
-// survivors target their own stack icon, everyone else (lost, tied-lost,
-// dragon, cascaded) targets their own discard pile — mirroring the
-// survivor-vs-discard split in useGameState.ts's NEXT_ROUND case exactly,
-// but read-only.
-//
-// [Battle Phases — Phase 0] Unchanged — still the single, round-end-only
-// flight wave. Splitting this into a Phase 1 wave + per-cascade-fight
-// wave(s) + final wave is Phase 2/3/4 of battle-phases-plan.md.
-function buildReturnFlights(
+// [BLOCK: Phase 1 Flight Builder]
+// [Battle Phases] Fires at phase1Resolve — flies only the lanes that are
+// FINAL in Phase 1 and never touched by a cascade: lost/tied-lost cards go
+// to discard, tied cards return to the stack. Cascade-pending lanes (still
+// reading 'won', or already relabeled 'cascaded' — see useGameState.ts's
+// REVEAL_ROUND "Cascade Relabeling" sub-block) are deliberately excluded
+// here; those get their own flight from buildCascadeFightFlights below,
+// fired exactly when their specific fight resolves. Reads resolution
+// directly, same read-only, never-recompute discipline as
+// buildReturnFlights below.
+function buildPhase1Flights(
   resolution: RoundResolution,
   refs: Record<string, HTMLElement | null>
 ): FlightItem[] {
@@ -217,31 +197,30 @@ function buildReturnFlights(
   for (const key of SLOT_KEYS) {
     const { player, ai, playerCard, aiCard } = resolution[key];
 
-    const playerSurvives = player === 'won' || player === 'tied';
-    const aiSurvives = ai === 'won' || ai === 'tied';
-
-    const playerSlotEl = refs[`slot-player-${key}`];
-    if (playerSlotEl) {
-      const dest = refs[playerSurvives ? 'stack-player' : 'discard-player'];
-      if (dest) {
+    if (player === 'lost' || player === 'tied-lost' || player === 'tied') {
+      const fromEl = refs[`slot-player-${key}`];
+      const destKey = player === 'tied' ? 'stack-player' : 'discard-player';
+      const dest = refs[destKey];
+      if (fromEl && dest) {
         flights.push({
-          id: `player-${key}`,
+          id: `player-${key}-p1`,
           card: playerCard,
-          fromRect: playerSlotEl.getBoundingClientRect(),
+          fromRect: fromEl.getBoundingClientRect(),
           toRect: dest.getBoundingClientRect(),
           faceDown: false,
         });
       }
     }
 
-    const aiSlotEl = refs[`slot-ai-${key}`];
-    if (aiSlotEl) {
-      const dest = refs[aiSurvives ? 'stack-ai' : 'discard-ai'];
-      if (dest) {
+    if (ai === 'lost' || ai === 'tied-lost' || ai === 'tied') {
+      const fromEl = refs[`slot-ai-${key}`];
+      const destKey = ai === 'tied' ? 'stack-ai' : 'discard-ai';
+      const dest = refs[destKey];
+      if (fromEl && dest) {
         flights.push({
-          id: `ai-${key}`,
+          id: `ai-${key}-p1`,
           card: aiCard,
-          fromRect: aiSlotEl.getBoundingClientRect(),
+          fromRect: fromEl.getBoundingClientRect(),
           toRect: dest.getBoundingClientRect(),
           faceDown: false,
         });
@@ -251,6 +230,142 @@ function buildReturnFlights(
 
   return flights;
 }
+
+// [BLOCK: Cascade Fight Flight Builder]
+// [Battle Phases — Phase 3] Fires once per cascade.log entry, at that
+// beat's start — flies exactly the card(s) THAT SPECIFIC FIGHT eliminates
+// to discard. Mirrors combat.ts's resolveCascade outcome handling exactly:
+//   - championWon:   challenger's card falls, champion stands (no flight
+//                     for the champion yet — it may still be challenged
+//                     again in a later beat, see Board.tsx's
+//                     hasCascadeLaneResolved doc comment).
+//   - challengerWon: champion's card falls, challenger becomes the new
+//                     champion (same "no flight yet" reasoning).
+//   - tied:          a fresh-vs-fresh tie inside the cascade — chain
+//                     halts, BOTH sides withdraw as survivors, neither is
+//                     eliminated. No flight this beat; both fly home in
+//                     the final wave like any other 'won' lane (their
+//                     lane-level outcome field is untouched by a cascade
+//                     'tied' result — see combat.ts's resolveCascade,
+//                     which never adds a plain tie to `overrides`).
+//   - tiedLost:      exhausted vs exhausted inside the cascade — chain
+//                     halts, BOTH cards are eliminated.
+// resolveCascade guarantees champion and challenger are always different
+// owners (same-owner entries only ever get queued as reserves, never
+// fought directly), so looking up exactly one Card per side is safe.
+function buildCascadeFightFlights(
+  fightLog: CascadeFightLog,
+  fightIndex: number,
+  resolution: RoundResolution,
+  refs: Record<string, HTMLElement | null>
+): FlightItem[] {
+  const flights: FlightItem[] = [];
+
+  function flyLoser(owner: Owner, slotKey: SlotKey) {
+    const card = owner === 'player' ? resolution[slotKey].playerCard : resolution[slotKey].aiCard;
+    const fromEl = refs[`slot-${owner}-${slotKey}`];
+    const dest = refs[`discard-${owner}`];
+    if (fromEl && dest) {
+      flights.push({
+        id: `cascade-${fightIndex}-${owner}-${slotKey}`,
+        card,
+        fromRect: fromEl.getBoundingClientRect(),
+        toRect: dest.getBoundingClientRect(),
+        faceDown: false,
+      });
+    }
+  }
+
+  switch (fightLog.outcome) {
+    case 'championWon':
+      flyLoser(fightLog.challengerOwner, fightLog.challengerSlot);
+      break;
+    case 'challengerWon':
+      flyLoser(fightLog.championOwner, fightLog.championSlot);
+      break;
+    case 'tiedLost':
+      flyLoser(fightLog.championOwner, fightLog.championSlot);
+      flyLoser(fightLog.challengerOwner, fightLog.challengerSlot);
+      break;
+    case 'tied':
+      // Both withdraw as survivors — no elimination flight this beat.
+      break;
+  }
+
+  return flights;
+}
+
+// [BLOCK: Return-Flight Builder — final wave]
+// Reads the round's ALREADY-COMPUTED, cascade-relabeled resolution (see
+// useGameState.ts's REVEAL_ROUND "Cascade Relabeling" sub-block — any lane
+// a cascade fight overrode already reads 'cascaded' there, not 'won', so
+// survival can be read directly off resolution.player/ai with no separate
+// cross-reference against pendingCascade needed). Never recomputes
+// resolveRound/resolveCascade itself — see types/game.ts's
+// GameState.pendingResolution doc comment on why re-running them would
+// corrupt exhausted-flag mutations.
+//
+// [Battle Phases] skipOutcomes lets the caller exclude lanes that already
+// flew in an earlier wave this round, so this final wave never double-
+// animates the same card. Non-Dragon rounds pass EARLY_FLIGHT_OUTCOMES
+// (lost/tied-lost/tied, handled by buildPhase1Flights, plus cascaded,
+// handled by buildCascadeFightFlights); Dragon rounds pass the default
+// empty set, since they never run either earlier wave and still need
+// every card animated here, same as before Battle Phases existed.
+function buildReturnFlights(
+  resolution: RoundResolution,
+  refs: Record<string, HTMLElement | null>,
+  skipOutcomes: Set<CombatOutcome> = new Set()
+): FlightItem[] {
+  const flights: FlightItem[] = [];
+
+  for (const key of SLOT_KEYS) {
+    const { player, ai, playerCard, aiCard } = resolution[key];
+
+    if (!skipOutcomes.has(player)) {
+      const playerSurvives = player === 'won' || player === 'tied';
+      const playerSlotEl = refs[`slot-player-${key}`];
+      if (playerSlotEl) {
+        const dest = refs[playerSurvives ? 'stack-player' : 'discard-player'];
+        if (dest) {
+          flights.push({
+            id: `player-${key}`,
+            card: playerCard,
+            fromRect: playerSlotEl.getBoundingClientRect(),
+            toRect: dest.getBoundingClientRect(),
+            faceDown: false,
+          });
+        }
+      }
+    }
+
+    if (!skipOutcomes.has(ai)) {
+      const aiSurvives = ai === 'won' || ai === 'tied';
+      const aiSlotEl = refs[`slot-ai-${key}`];
+      if (aiSlotEl) {
+        const dest = refs[aiSurvives ? 'stack-ai' : 'discard-ai'];
+        if (dest) {
+          flights.push({
+            id: `ai-${key}`,
+            card: aiCard,
+            fromRect: aiSlotEl.getBoundingClientRect(),
+            toRect: dest.getBoundingClientRect(),
+            faceDown: false,
+          });
+        }
+      }
+    }
+  }
+
+  return flights;
+}
+
+// [Battle Phases] Non-Dragon rounds fly lost/tied-lost/tied cards away in
+// the Phase 1 wave, and cascaded cards away in their own cascade fight
+// beat — the final wave must skip all four so it never re-animates a card
+// that already left. Declared once, module-level, since the set is always
+// identical for every non-Dragon round.
+const EARLY_FLIGHT_OUTCOMES = new Set<CombatOutcome>(['lost', 'tied-lost', 'tied', 'cascaded']);
 
 function App() {
   const [started, setStarted] = useState(false);
@@ -264,10 +379,21 @@ function App() {
   const [selectedAiCardId, setSelectedAiCardId] = useState<string | null>(null);
   const [revealStep, setRevealStep] = useState<RevealStep>(null);
   const [dragonOverlayOwner, setDragonOverlayOwner] = useState<Owner | null>(null);
+  // [Battle Phases — Phase 3] Which cascade.log entry is currently
+  // playing, or null outside of a cascade fight beat — see Board.tsx's
+  // hasCascadeLaneResolved / isCurrentCascadeFightSlot, which both key off
+  // this alongside pendingCascade to decide per-lane reveal + glow timing.
+  const [cascadeFightIndex, setCascadeFightIndex] = useState<number | null>(null);
   const [flights, setFlights] = useState<FlightItem[]>([]);
 
   // [BLOCK: Timer Refs]
-  // allTimers: every active timer ID — cleared on back-to-menu or skip
+  // allTimers: every active timer ID — cleared on back-to-menu or skip.
+  //   Timers are pushed in directly as they're created, including ones
+  //   created inside nested/later-firing timers (see the Battle Phases
+  //   orchestration below), rather than assembled into one array at the
+  //   end — the cascade-aware portion of a round's schedule isn't fully
+  //   known until partway through, so there's no single synchronous point
+  //   left to build the whole list at once.
   // revealFiredForRound: guards against double-firing the reveal effect
   // historyRecordedForRound: guards against double-dispatching RECORD_HISTORY
   //   if the auto-transition t5 already fired before the player hits Skip
@@ -278,13 +404,15 @@ function App() {
 
   // [BLOCK: Latest-State Ref]
   // The reveal effect's timers are all scheduled at the moment REVEAL_ROUND
-  // fires, but the return-flight timer needs to read pendingResolution /
-  // pendingCascade as they stand SEVERAL RENDERS LATER (after REVEAL_ROUND
-  // has actually landed) — a normal closure over `state` here would be
-  // stale. This ref is kept in sync on every render so timer callbacks can
-  // read current state without re-running resolveRound/resolveCascade
-  // themselves (which would corrupt exhausted-flag mutations — see
-  // types/game.ts's GameState.pendingResolution doc comment).
+  // fires, but several of them (return-flight, and now the cascade-aware
+  // schedule + Phase 1 / cascade-fight flight waves) need to read
+  // pendingResolution / pendingCascade as they stand SEVERAL RENDERS LATER
+  // (after REVEAL_ROUND has actually landed) — a normal closure over
+  // `state` here would be stale. This ref is kept in sync on every render
+  // so timer callbacks can read current state without re-running
+  // resolveRound/resolveCascade themselves (which would corrupt
+  // exhausted-flag mutations — see types/game.ts's
+  // GameState.pendingResolution doc comment).
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
@@ -293,8 +421,9 @@ function App() {
   // [BLOCK: Element Ref Registry]
   // Populated by Board.tsx via registerRef for every stack icon, discard
   // pile, and slot — keyed e.g. 'stack-player', 'discard-ai',
-  // 'slot-player-left'. Read by buildReturnFlights at return-flight time
-  // to measure flight source/destination rects.
+  // 'slot-player-left'. Read by buildReturnFlights/buildPhase1Flights/
+  // buildCascadeFightFlights at flight time to measure flight source/
+  // destination rects.
   const elementRefs = useRef<Record<string, HTMLElement | null>>({});
   const registerRef = useCallback((key: string, el: HTMLElement | null) => {
     elementRefs.current[key] = el;
@@ -306,6 +435,7 @@ function App() {
     aiStack, aiHand, aiSlots,
     ai, result, roundHistory,
     playerDiscard, aiDiscard,
+    pendingCascade,
     devMode,
   } = state;
 
@@ -342,6 +472,16 @@ function App() {
   // REVEAL_ROUND dispatched immediately (resolves game state, phase → resolution).
   // Visual timer chain runs independently — no cleanup return so timers survive
   // the reveal→resolution phase transition.
+  //
+  // [Battle Phases] Branches in two shapes from here:
+  //   - Dragon rounds: full timeline known upfront (buildDragonTimeline) —
+  //     scheduled exactly as before Battle Phases existed.
+  //   - Non-Dragon rounds: only left/center/right is known upfront
+  //     (buildLeftCenterRightEvents). The cascade-aware portion
+  //     (phase1Resolve -> cascadeFight(s) -> done) is scheduled from
+  //     INSIDE the timer that fires at 'right', once pendingCascade is
+  //     guaranteed to be populated — see buildCascadeAwareSchedule's doc
+  //     comment for why this can't happen any earlier.
   useEffect(() => {
     if (!started || phase !== 'reveal') return;
     if (revealFiredForRound.current === round) return;
@@ -360,79 +500,117 @@ function App() {
     dispatch({ type: 'REVEAL_ROUND' });
     setRevealStep('flipping');
 
-    const { events, doneAt } = buildRevealTimeline(dragonSlotIndex);
+    // [SUB-BLOCK: schedule downstream history/return-flight/next-round
+    // timers off a given doneAt] Shared by both the Dragon branch (doneAt
+    // known upfront) and the non-Dragon branch (doneAt only known once the
+    // cascade-aware schedule has been computed inside the 'right' timer).
+    // skipOutcomes is passed straight through to buildReturnFlights — see
+    // its doc comment. Also resets cascadeFightIndex back to null, whether
+    // or not this round ever set it, so it never leaks into next round's
+    // early steps.
+    function scheduleEndOfRoundTimers(doneAt: number, skipOutcomes: Set<CombatOutcome>) {
+      const historyTimer = setTimeout(() => {
+        historyRecordedForRound.current = round;
+        dispatch({ type: 'RECORD_HISTORY' });
+      }, doneAt + DONE_TO_HISTORY_MS);
+      allTimers.current.push(historyTimer);
 
-    const stepTimers = events.map((e) =>
-      setTimeout(() => setRevealStep(e.step), e.at)
-    );
+      const returnFlightTimer = setTimeout(() => {
+        const latest = stateRef.current;
+        if (latest.pendingResolution) {
+          setFlights(buildReturnFlights(latest.pendingResolution, elementRefs.current, skipOutcomes));
+        }
+      }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS);
+      allTimers.current.push(returnFlightTimer);
 
-    const historyTimer = setTimeout(() => {
-      historyRecordedForRound.current = round;
-      dispatch({ type: 'RECORD_HISTORY' });
-    }, doneAt + DONE_TO_HISTORY_MS);
-
-    // [SUB-BLOCK: Return Flight]
-    // Fires after the same HISTORY_TO_NEXT_MS pause the auto-transition
-    // always used, but instead of immediately advancing the round, it
-    // builds the return-flight ghosts (reading pendingResolution/
-    // pendingCascade via stateRef, since those are only current several
-    // renders after this effect started — see stateRef's doc comment).
-    const returnFlightTimer = setTimeout(() => {
-      const latest = stateRef.current;
-      if (latest.pendingResolution) {
-        setFlights(buildReturnFlights(latest.pendingResolution, elementRefs.current));
-      }
-    }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS);
-
-    // NEXT_ROUND now waits out the return flight before actually advancing
-    // — this is the "extend the timeline" tradeoff agreed on, rather than
-    // squeezing the flight into existing windows.
-    const nextRoundTimer = setTimeout(() => {
-      setFlights([]);
-      dispatch({ type: 'NEXT_ROUND' });
-      setRevealStep(null);
-      setDragonOverlayOwner(null);
-    }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS + RETURN_FLIGHT_MS);
-
-    // [Battle Phases — Phase 1: verification probe]
-    // Non-Dragon rounds only — Dragon rounds never run a cascade, so
-    // there's nothing to schedule/verify (buildRevealTimeline's Dragon
-    // path already fully owns their timeline). Fires at the same instant
-    // as the 'right' step, once stateRef.current.pendingCascade is
-    // guaranteed to be populated (REVEAL_ROUND has long since landed by
-    // then), and logs what the real phase1Resolve/cascadeFight/done
-    // schedule WOULD be for this round. Does not call setRevealStep, does
-    // not touch historyTimer/returnFlightTimer/nextRoundTimer above — this
-    // round's actual pacing and visuals are completely unaffected. See
-    // buildCascadeAwareSchedule's doc comment for why this can't run any
-    // earlier than 'right'.
-    let probeTimer: ReturnType<typeof setTimeout> | null = null;
-    if (dragonSlotIndex === null) {
-      const rightEvent = events.find((e) => e.step === 'right');
-      const rightAt = rightEvent ? rightEvent.at : doneAt - RIGHT_TO_DONE_MS;
-
-      probeTimer = setTimeout(() => {
-        const cascade = stateRef.current.pendingCascade;
-        const cascadeFightCount = cascade?.log.length ?? 0;
-        const schedule = buildCascadeAwareSchedule(rightAt, cascadeFightCount);
-        // eslint-disable-next-line no-console
-        console.log('[Battle Phases — Phase 1 verification]', {
-          round,
-          cascadeTriggered: cascade?.triggered ?? false,
-          cascadeFightCount,
-          schedule,
-          currentLiveDoneAt: doneAt,
-        });
-      }, rightAt);
+      const nextRoundTimer = setTimeout(() => {
+        setFlights([]);
+        dispatch({ type: 'NEXT_ROUND' });
+        setRevealStep(null);
+        setDragonOverlayOwner(null);
+        setCascadeFightIndex(null);
+      }, doneAt + DONE_TO_HISTORY_MS + HISTORY_TO_NEXT_MS + RETURN_FLIGHT_MS);
+      allTimers.current.push(nextRoundTimer);
     }
 
-    allTimers.current = [
-      ...stepTimers,
-      historyTimer,
-      returnFlightTimer,
-      nextRoundTimer,
-      ...(probeTimer ? [probeTimer] : []),
-    ];
+    if (dragonSlotIndex !== null) {
+      // [Dragon branch — unchanged from before Battle Phases existed]
+      const { events, doneAt } = buildDragonTimeline(dragonSlotIndex);
+      for (const e of events) {
+        const t = setTimeout(() => setRevealStep(e.step), e.at);
+        allTimers.current.push(t);
+      }
+      scheduleEndOfRoundTimers(doneAt, new Set());
+      return;
+    }
+
+    // [Non-Dragon branch — Battle Phases]
+    const { events: lcrEvents, rightAt } = buildLeftCenterRightEvents();
+
+    for (const e of lcrEvents) {
+      if (e.step === 'right') continue; // handled below, combined with orchestration
+      const t = setTimeout(() => setRevealStep(e.step), e.at);
+      allTimers.current.push(t);
+    }
+
+    const rightTimer = setTimeout(() => {
+      setRevealStep('right');
+
+      // pendingCascade is guaranteed populated by now — REVEAL_ROUND
+      // landed long before this fires (at minimum FLIP_TO_LEFT_MS +
+      // LEFT_TO_CENTER_MS + CENTER_TO_RIGHT_MS after dispatch).
+      const cascade = stateRef.current.pendingCascade;
+      const cascadeFightCount = cascade?.log.length ?? 0;
+      const { events: phaseEvents, doneAt } = buildCascadeAwareSchedule(rightAt, cascadeFightCount);
+
+      let fightCounter = 0;
+
+      for (const e of phaseEvents) {
+        const delay = e.at - rightAt; // relative to now, since we're already at rightAt
+        const t = setTimeout(() => setRevealStep(e.step), delay);
+        allTimers.current.push(t);
+
+        if (e.step === 'phase1Resolve') {
+          const flightTimer = setTimeout(() => {
+            const resolution = stateRef.current.pendingResolution;
+            if (resolution) {
+              setFlights(buildPhase1Flights(resolution, elementRefs.current));
+            }
+          }, delay);
+          allTimers.current.push(flightTimer);
+
+          const clearTimer = setTimeout(() => setFlights([]), delay + RETURN_FLIGHT_MS);
+          allTimers.current.push(clearTimer);
+        }
+
+        if (e.step === 'cascadeFight') {
+          const idx = fightCounter;
+          fightCounter += 1;
+
+          const fightTimer = setTimeout(() => {
+            setCascadeFightIndex(idx);
+            const latestCascade = stateRef.current.pendingCascade;
+            const latestResolution = stateRef.current.pendingResolution;
+            const fightLog = latestCascade?.log[idx];
+            if (fightLog && latestResolution) {
+              setFlights(buildCascadeFightFlights(fightLog, idx, latestResolution, elementRefs.current));
+            }
+          }, delay);
+          allTimers.current.push(fightTimer);
+
+          const clearTimer = setTimeout(() => setFlights([]), delay + RETURN_FLIGHT_MS);
+          allTimers.current.push(clearTimer);
+        }
+
+        if (e.step === 'done') {
+          const doneClearTimer = setTimeout(() => setCascadeFightIndex(null), delay);
+          allTimers.current.push(doneClearTimer);
+        }
+      }
+
+      scheduleEndOfRoundTimers(doneAt, EARLY_FLIGHT_OUTCOMES);
+    }, rightAt);
+    allTimers.current.push(rightTimer);
 
     // intentionally no cleanup return — timers must survive reveal→resolution
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -440,7 +618,10 @@ function App() {
 
   // [BLOCK: Reset reveal step when new round placement begins]
   useEffect(() => {
-    if (phase === 'placement') setRevealStep(null);
+    if (phase === 'placement') {
+      setRevealStep(null);
+      setCascadeFightIndex(null);
+    }
   }, [phase]);
 
   // [BLOCK: Clear card selection when leaving placement]
@@ -461,8 +642,9 @@ function App() {
   // canSkip: true for the entire reveal + auto-transition window.
   // Phase is already 'resolution' by the time revealStep is set (REVEAL_ROUND
   // fires immediately), so this covers flipping → left/center/right (or the
-  // Dragon-jump equivalent) → dragonOverlay (if applicable) → done → post-done
-  // transition, all the way until NEXT_ROUND fires.
+  // Dragon-jump equivalent) → phase1Resolve → cascadeFight(s) →
+  // dragonOverlay (if applicable) → done → post-done transition, all the
+  // way until NEXT_ROUND fires.
   const canSkip = revealStep !== null && phase === 'resolution';
 
   const canShuffle = phase !== 'reveal' && phase !== 'gameover' && revealStep === null;
@@ -489,6 +671,7 @@ function App() {
     setSelectedCardId(null);
     setRevealStep(null);
     setDragonOverlayOwner(null);
+    setCascadeFightIndex(null);
     setFlights([]);
     setStarted(false);
   }
@@ -546,6 +729,13 @@ function App() {
   // NEXT_ROUND, fast-forwarding through whatever part of the reveal/overlay
   // sequence was still running. Also clears any in-progress return flight
   // immediately — no point animating a flight the player just skipped past.
+  // [Battle Phases] Still a clean no-op regardless of how far through the
+  // phase1Resolve/cascadeFight sequence the round was — state itself was
+  // never mutated mid-round (Option A: visual only, see
+  // battle-phases-plan.md), so NEXT_ROUND alone still correctly derives
+  // survivors/discards from pendingResolution no matter which timers were
+  // cancelled. cascadeFightIndex is reset here too so a skip mid-cascade
+  // doesn't leave a stale glow/reveal state bleeding into next round.
   function handleSkip() {
     if (!canSkip) return;
     allTimers.current.forEach(clearTimeout);
@@ -558,6 +748,7 @@ function App() {
     dispatch({ type: 'NEXT_ROUND' });
     setRevealStep(null);
     setDragonOverlayOwner(null);
+    setCascadeFightIndex(null);
   }
 
   function handleShuffleStack() {
@@ -629,6 +820,8 @@ function App() {
                 playerDiscardCount={playerDiscard.length}
                 aiDiscardCount={aiDiscard.length}
                 dragonOverlayOwner={dragonOverlayOwner}
+                pendingCascade={pendingCascade}
+                cascadeFightIndex={cascadeFightIndex}
                 devMode={devMode}
                 aiStack={aiStack}
                 canEditStacks={canShuffle}

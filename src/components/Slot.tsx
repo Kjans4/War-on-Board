@@ -4,6 +4,7 @@ import type { Slot as SlotType } from '../types/game';
 import { Card } from './Card';
 import clsx from 'clsx';
 import styles from '../styles/Slot.module.css';
+import glowStyles from '../styles/CascadeGlow.module.css';
 
 // [BLOCK: Props]
 interface SlotProps {
@@ -17,6 +18,12 @@ interface SlotProps {
   // final outcome but each slot flips up one at a time.
   visuallyFaceDown?: boolean; // overrides the default face-down inference
   showOutcome?: boolean;      // gates the outcome badge + glow separately
+  // [Battle Phases — Phase 3] True for exactly the two slots (one per
+  // owner) contesting the CURRENT cascade fight beat — see Board.tsx's
+  // isCurrentCascadeFightSlot. Purely a visual accent (see
+  // CascadeGlow.module.css); has no effect on outcome/face-down state,
+  // which showOutcome/visuallyFaceDown above already fully control.
+  fightGlow?: boolean;
   // Exposes this slot's DOM node to the parent (Board -> App) so the
   // discard/return flight animation can measure its position as a flight
   // source at round-end — see App.tsx's buildReturnFlights. Purely a
@@ -43,6 +50,7 @@ export function Slot({
   clickable = false,
   visuallyFaceDown,
   showOutcome,
+  fightGlow = false,
   elRef,
 }: SlotProps) {
   const outcome = OUTCOME_CONFIG[slot.state];
@@ -69,6 +77,7 @@ export function Slot({
         displayOutcome?.className && styles[displayOutcome.className],
         isEmpty && styles['slot--empty'],
         interactive && styles['slot--clickable'],
+        fightGlow && glowStyles['cascade-glow'],
       )}
       onClick={interactive ? onClick : undefined}
       role={interactive ? 'button' : undefined}
