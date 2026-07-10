@@ -1,8 +1,12 @@
 /* src/styles/Card.module.css */
 
+/* [Card Art] Base size changed to a true 2:3 ratio (72x108) to match the
+   600x900 source photos exactly — was 72x100. overflow: hidden added so
+   a photo background respects the card's border-radius instead of
+   spilling past the rounded corners. */
 .card {
   width: 72px;
-  height: 100px;
+  height: 108px;
   border-radius: 8px;
   border: 2px solid #444;
   display: flex;
@@ -16,6 +20,9 @@
   font-family: system-ui, sans-serif;
   user-select: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
 }
 
 .card--clickable {
@@ -37,9 +44,12 @@
   cursor: not-allowed;
 }
 
+/* [Card Art] Face-down back stays a plain, generic dark panel — identical
+   for every type (no back art yet). Unchanged from before this pass. */
 .card--face-down {
   background: #2a2a4a;
   border-color: #555;
+  background-image: none !important;
 }
 
 .card--exhausted {
@@ -47,14 +57,23 @@
   border-style: dashed;
 }
 
-/* Type colors */
+/* Type colors — still used as a fallback background for any type without
+   photo art (currently just Dragon). */
 .card--sword  { border-color: #e05252; background: #2a1a1a; }
 .card--arrow  { border-color: #52b0e0; background: #1a2230; }
 .card--shield { border-color: #52c87a; background: #1a2a1e; }
 
-/* Dragon — owner-aware coloring */
+/* Dragon — owner-aware coloring, untouched by the Card Art pass. */
 .card--dragon-player { border-color: #f0c040; background: #2a2410; box-shadow: 0 0 10px rgba(240,192,64,0.25); }
 .card--dragon-ai     { border-color: #e05252; background: #2a1010; box-shadow: 0 0 10px rgba(224,82,82,0.25); }
+
+/* [Card Art] Photo-backed card (Sword/Arrow/Shield, face-up). The photo
+   itself is set inline via style={backgroundImage} in Card.tsx — this
+   class just governs the border treatment framing it. Content (badges)
+   is positioned absolutely, so no flex-centering changes are needed. */
+.card--photo {
+  border-color: #555;
+}
 
 .card__symbol {
   font-size: 28px;
@@ -73,6 +92,24 @@
   font-size: 32px;
   color: #555;
   font-weight: 700;
+}
+
+/* [Card Art] Small type-indicator badge shown top-left on photo-backed
+   cards only — a dark circular scrim behind the emoji keeps it legible
+   over any photo. */
+.card__type-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .card__exhausted-badge {

@@ -6,11 +6,15 @@
   padding: 4px 0 10px;
 }
 
+/* [Card Art] min-height bumped (100 -> 124) to comfortably fit the taller
+   108px-high cards plus the fan's max translateY offset (Hand.tsx's
+   fanStyle: Math.abs(offset) * 7, up to ~14px for a 5-card hand) without
+   clipping the lowest-hanging fanned card. */
 .hand__cards {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  min-height: 100px;
+  min-height: 124px;
 }
 
 .hand__card-wrap {

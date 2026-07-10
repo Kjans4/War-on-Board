@@ -15,11 +15,14 @@
   gap: 10px;
 }
 
+/* [Card Art] min-height bumped (84 -> 118) to fit the taller 108px cards
+   plus the opponent hand's fan translateY offset (Board.tsx's fanStyle:
+   Math.abs(offset) * 5, up to ~10px for a 5-card hand). */
 .battlefield__opp-hand {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  min-height: 84px;
+  min-height: 118px;
   margin-bottom: 2px;
 }
 
@@ -99,9 +102,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* [Card Art] Resized to a 2:3 ratio (46x69, was 46x64) to stay visually
+   consistent with the new card proportions — purely decorative, no photo
+   art on the stack back itself. */
 .stack-col__icon {
   width: 46px;
-  height: 64px;
+  height: 69px;
   border-radius: 6px;
   background: linear-gradient(135deg, #2a2a4a, #1a1a2e);
   border: 2px solid #444;
@@ -146,9 +152,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* [Card Art] Resized to a 2:3 ratio (40x60, was 40x56) to match the stack
+   icon's adjustment above. */
 .discard-col__icon {
   width: 40px;
-  height: 56px;
+  height: 60px;
   border-radius: 6px;
   background: linear-gradient(135deg, #3a2a2a, #221515);
   border: 2px solid #4a3333;
