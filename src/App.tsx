@@ -1,6 +1,7 @@
 // src/App.tsx
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import clsx from 'clsx';
 import { useGameState } from './state/useGameState';
 import { getAIPlacement } from './logic/ai';
 import { findDragonPlacement } from './logic/combat';
@@ -772,6 +773,9 @@ function App() {
   }
 
   // [BLOCK: Render — Main Menu]
+  // [Background Art] Uses plain .app-shell here — no table background —
+  // since the menu's own art lives on MainMenu.module.css's .main-menu
+  // instead (see that file's doc comment).
   if (!started) {
     return (
       <div className={styles['app-shell']}>
@@ -784,12 +788,16 @@ function App() {
   }
 
   // [BLOCK: Render — Game]
+  // [Background Art] app-shell--table layered on top of the base
+  // app-shell class ONLY here — the wood-grain table background is meant
+  // to sit behind the whole game screen (sidebar included), never behind
+  // the Main Menu above.
   return (
     <>
       <h1 className={styles['app-title']}>War on Board</h1>
       {devMode && <span className={styles['app-dev-badge']}>Dev Test</span>}
 
-      <div className={styles['app-shell']}>
+      <div className={clsx(styles['app-shell'], styles['app-shell--table'])}>
 
         {/* [SUB-BLOCK: Sidebar] */}
         <div className={styles['app-sidebar']}>

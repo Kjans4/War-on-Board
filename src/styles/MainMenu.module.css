@@ -1,5 +1,11 @@
 /* src/styles/MainMenu.module.css */
 
+/* [Background Art] menu.jpg (a battle-scene illustration, 5000x2812) is
+   applied via background-size: cover so it fills the container at any
+   viewport size without stretching or repeating. A dark linear-gradient
+   is layered on top of the image in the SAME background-image
+   declaration (rather than a separate overlay element) so the existing
+   light title/button text stays legible over busy parts of the art. */
 .main-menu {
   display: flex;
   flex-direction: column;
@@ -9,6 +15,10 @@
   height: 100%;
   width: 100%;
   text-align: center;
+  background-image: linear-gradient(rgba(8, 8, 14, 0.6), rgba(8, 8, 14, 0.6)), url('/menu.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .main-menu__title {
