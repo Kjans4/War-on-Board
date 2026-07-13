@@ -854,12 +854,14 @@ function App() {
                 }
                 registerRef={registerRef}
               />
-              {/* [Layout] Player's stack icon + Shuffle button now sit to the
+              {/* [Layout] Player's stack icon + Shuffle button sit to the
                   right of Hand, matching the opponent's stack-next-to-hand
                   look — see design discussion. Discard stays inside Board.
-                  Inline flex here rather than a new CSS class, since
-                  App.module.css wasn't available to extend safely. */}
-              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '24px' }}>
+                  Now a real CSS class (.app-hand-row) instead of an inline
+                  style — see App.module.css's doc comment on why it also
+                  carries its own bottom clearance for the Hand's fan
+                  spill. */}
+              <div className={styles['app-hand-row']}>
                 <Hand
                   hand={playerHand}
                   selectedCardId={selectedCardId}

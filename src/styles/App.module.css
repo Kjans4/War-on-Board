@@ -42,15 +42,47 @@
   box-sizing: border-box;
 }
 
+/* [BLOCK: Center Column — Layout Fix]
+   Was `justify-content: flex-start` with a flat 36px top padding — on
+   shorter viewports this pinned the whole Board+Hand block to the top and
+   left whatever came after (the Hand row, deck, Shuffle button) crammed
+   against the bottom edge with almost no clearance. Switched to
+   `justify-content: center` so the entire block sits vertically balanced
+   within whatever space app-center actually has, with `min-height: 0`
+   added so this flex child can compute that space correctly against
+   app-shell's fixed height instead of forcing overflow. */
 .app-center {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 18px;
-  padding: 36px 16px 16px;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+/* [BLOCK: Hand + Stack Row]
+   Houses the player's fanned Hand alongside PlayerStackControls (deck +
+   Shuffle) — previously an inline style on the wrapping div in App.tsx;
+   promoted to a real class so it can carry its own bottom clearance.
+   Hand.tsx's fan effect shifts outer cards down via `transform:
+   translateY()` for the arc look — that's a purely visual shift and adds
+   nothing to the box's layout height, so without extra clearance here the
+   fanned cards' bottom edge can crowd (or, in a tight viewport, graze) the
+   row's own bottom edge. This padding-bottom exists specifically to cover
+   that spill (max shift is ~14px at the default 5-card hand; padding here
+   plus Hand.module.css's own 10px bottom padding covers it with margin
+   to spare). */
+.app-hand-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding-bottom: 8px;
 }
 
 .app-title {
