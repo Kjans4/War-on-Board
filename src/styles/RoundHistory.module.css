@@ -1,14 +1,26 @@
 /* src/styles/RoundHistory.module.css */
 
+/* [BLOCK: Panel Frame — Warm Beveled Silver]
+   Was a flat `border: 1px solid #222` — invisible against the wood-table
+   background (see App.module.css's .app-shell--table). Replaced with a
+   warm pewter-toned border plus an inset highlight/shadow pair to read as
+   raised metal rather than a flat grey line: a light warm highlight along
+   the top/left inner edge, a darker warm-tinted shadow along the
+   bottom/right inner edge, and a soft outer drop shadow so the whole
+   panel visually lifts off the table. */
 .round-history {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   border-radius: 10px;
-  border: 1px solid #222;
+  border: 2px solid #a89f8f;
   background: #0d0d1a;
   overflow: hidden;
+  box-shadow:
+    inset 1px 1px 0 rgba(240, 230, 210, 0.35),
+    inset -1px -1px 0 rgba(35, 25, 15, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .round-history__heading {
@@ -18,7 +30,7 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #888;
-  border-bottom: 1px solid #1c1c2a;
+  border-bottom: 1px solid rgba(168, 159, 143, 0.35);
   flex-shrink: 0;
 }
 
