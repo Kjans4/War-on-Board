@@ -794,9 +794,6 @@ function App() {
   // the Main Menu above.
   return (
     <>
-      <h1 className={styles['app-title']}>War on Board</h1>
-      {devMode && <span className={styles['app-dev-badge']}>Dev Test</span>}
-
       <div className={clsx(styles['app-shell'], styles['app-shell--table'])}>
 
         {/* [SUB-BLOCK: Sidebar] */}
