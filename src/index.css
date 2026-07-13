@@ -11,8 +11,17 @@
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* [BLOCK: Fonts — Tactical/Strategic pairing]
+     --heading (Cinzel): TITLE ONLY — the "War on Board" h1 and the
+     "Game Over" h2 moment. Loaded at 700/900 only (see index.html) —
+     never used for body/UI text, so lighter weights aren't needed.
+     --sans (Rajdhani): everything else — HUD numbers (round counter,
+     stack/discard counts), buttons, card labels, round history text.
+     Condensed and slightly technical-feeling, matching the war-strategy
+     tone rather than pure fantasy. Falls back to system-ui if the
+     Google Fonts request ever fails to load. */
+  --sans: 'Rajdhani', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: 'Cinzel', Georgia, serif;
   --mono: ui-monospace, Consolas, monospace;
 
   font: 18px/145% var(--sans);
@@ -77,10 +86,15 @@ body {
   margin: 0;
 }
 
+/* [BLOCK: Headings — Cinzel, weight bumped up]
+   Cinzel is only loaded at 700/900 (see index.html) — the previous
+   font-weight: 500 would fall back to a synthesized/mismatched weight
+   since 500 doesn't exist in what's loaded. Set explicitly to 700 here
+   so h1/h2 render at an actual shipped weight. */
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 500;
+  font-weight: 700;
   color: var(--text-h);
 }
 
