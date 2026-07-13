@@ -9,11 +9,14 @@
   box-sizing: border-box;
 }
 
-/* [Background Art] table.jpg is a small (612x408) wood-grain texture —
-   too low-res to stretch across a full screen with `cover` without
-   visible blur, but it reads as a seamless-ish tiling pattern, so it's
-   tiled at native resolution via background-repeat instead. A dark
-   linear-gradient is layered in the same background-image declaration
+/* [Background Art] table.jpg is a small (612x408) wood-grain texture.
+   Previously tiled via `background-repeat: repeat`, but the image isn't a
+   seamless tile — its edges don't line up, so repeating it produced a
+   visible grid seam ("two images stuck together"). Switched to a single
+   centered, cover-sized background instead: no repeat, no seam. At this
+   source resolution `cover` may soften slightly on very large/ultrawide
+   viewports, but that reads far better than a repeating seam. A dark
+   linear-gradient stays layered in the same background-image declaration
    (same technique as MainMenu.module.css's menu background) to keep the
    sidebar/board UI legible on top of it. Applied only to the game-screen
    instance of .app-shell (see App.tsx, which adds this modifier class
@@ -21,7 +24,9 @@
    stays a plain layout container with no background of its own. */
 .app-shell--table {
   background-image: linear-gradient(rgba(6, 6, 10, 0.55), rgba(6, 6, 10, 0.55)), url('/table.jpg');
-  background-repeat: repeat;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
 }
 
 .app-sidebar {
