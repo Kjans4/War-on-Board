@@ -1,13 +1,19 @@
 /* src/styles/RoundHistory.module.css */
 
-/* [BLOCK: Panel Frame — Warm Beveled Silver]
-   Was a flat `border: 1px solid #222` — invisible against the wood-table
-   background (see App.module.css's .app-shell--table). Replaced with a
-   warm pewter-toned border plus an inset highlight/shadow pair to read as
-   raised metal rather than a flat grey line: a light warm highlight along
-   the top/left inner edge, a darker warm-tinted shadow along the
-   bottom/right inner edge, and a soft outer drop shadow so the whole
-   panel visually lifts off the table. */
+/* [BLOCK: Panel Frame — Warm Beveled Silver + Wood Texture]
+   Background was flat dark-blue (#0d0d1a), then table.jpg (too low-res
+   and landscape for this tall panel), then round-history-wood.jpg with
+   `background-attachment: fixed` — but `fixed` computes `cover` sizing
+   against the VIEWPORT (wide/landscape), not this panel's own (narrow,
+   tall) box, so a portrait image got scaled up massively to cover that
+   wide viewport, leaving only a tiny, heavily zoomed sliver visible here.
+   Fixed attachment dropped entirely; the two background layers now get
+   independent sizing instead (see the two comma-separated values below):
+   the dark wash layer (listed first, rendered on top) still uses `cover`
+   so it always fully fills the panel with no gaps, while the wood photo
+   layer (listed second, underneath) ALSO uses `cover` so it completely 
+   covers the entire frame with no gaps (scaled up to cover the vertical height). 
+   Border stays the warm beveled-silver frame. */
 .round-history {
   flex: 1;
   min-height: 0;
@@ -15,7 +21,10 @@
   flex-direction: column;
   border-radius: 10px;
   border: 2px solid #a89f8f;
-  background: #0d0d1a;
+  background-image: linear-gradient(rgba(10, 6, 3, 0.5), rgba(10, 6, 3, 0.5)), url('/round-history-wood.jpg');
+  background-size: cover, cover;
+  background-position: center;
+  background-repeat: no-repeat;
   overflow: hidden;
   box-shadow:
     inset 1px 1px 0 rgba(240, 230, 210, 0.35),
@@ -56,7 +65,7 @@
 
 .round-history__entry {
   padding: 8px 12px;
-  border-bottom: 1px solid #161622;
+  border-bottom: 1px solid rgba(20, 12, 6, 0.6);
 }
 
 .round-history__entry:last-child {
@@ -108,6 +117,14 @@
   gap: 3px;
 }
 
+/* [BLOCK: Matchup Row — Wood Texture, lighter wash]
+   Same round-history-wood.jpg as the panel above, but `cover` (not
+   `contain`) for this layer — a row this small would show almost nothing
+   of the photo under `contain`. `background-attachment: fixed` removed
+   here too, for the same reason as the panel (see its doc comment): it
+   was sizing against the viewport instead of this row's own tiny box,
+   causing the same over-zoomed look. Wash is lighter than the panel's so
+   rows read as a distinct lighter recess, not a blend. */
 .round-history__slot {
   display: flex;
   align-items: center;
@@ -115,7 +132,13 @@
   gap: 6px;
   padding: 3px 6px;
   border-radius: 5px;
-  background: #111120;
+  background-image: linear-gradient(rgba(40, 25, 15, 0.32), rgba(40, 25, 15, 0.32)), url('/round-history-wood.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 245, 225, 0.05);
 }
 
 .round-history__matchup {
@@ -141,10 +164,10 @@
   white-space: nowrap;
 }
 
-.round-history__slot--won  .round-history__outcome-badge { background: #52c87a; color: #0a1a10; }
-.round-history__slot--lost .round-history__outcome-badge { background: #e05252; color: #1a0a0a; }
+.round-history__slot--won   .round-history__outcome-badge { background: #52c87a; color: #0a1a10; }
+.round-history__slot--lost  .round-history__outcome-badge { background: #e05252; color: #1a0a0a; }
 .round-history__slot--cascaded .round-history__outcome-badge { background: #9d6fe0; color: #1a0f2a; }
-.round-history__slot--tied .round-history__outcome-badge { background: #e0a030; color: #1a1000; }
+.round-history__slot--tied  .round-history__outcome-badge { background: #e0a030; color: #1a1000; }
 .round-history__slot--tied-lost .round-history__outcome-badge { background: #444; color: #aaa; }
 .round-history__slot--dragon .round-history__outcome-badge { background: #f0c040; color: #2a1a00; }
 
