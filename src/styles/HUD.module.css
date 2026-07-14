@@ -31,40 +31,78 @@
   padding-top: 12px;
 }
 
+/* [BLOCK: Play/Skip Button — Carved Stone, Big Bevel]
+   Base stone stays constant across every state (dormant/Ready/Skip) — a
+   mottled warm-grey gradient (a couple of soft radial patches fake rock
+   graining without an image) plus a chunky inset bevel: a thick warm
+   highlight along the top-left, a thick near-black shadow along the
+   bottom-right, an inner edge ring for crisp definition, and a soft outer
+   drop shadow so the whole button visually lifts off the sidebar. State
+   is communicated by the LABEL, not the stone — see --ready/--skip below,
+   which only change text color/glow, never the shape or stone tone. */
 .hud-sidebar__play {
   padding: 12px;
-  border-radius: 9px;
-  border: 2px solid #333;
-  background: transparent;
-  color: #555;
+  border-radius: 10px;
+  border: none;
+  background:
+    radial-gradient(ellipse at 25% 20%, rgba(255, 252, 240, 0.07), transparent 50%),
+    radial-gradient(ellipse at 78% 78%, rgba(0, 0, 0, 0.22), transparent 55%),
+    linear-gradient(155deg, #6e6a5f 0%, #57534a 45%, #3c3933 100%);
+  box-shadow:
+    inset 2px 2px 1px rgba(255, 250, 235, 0.28),
+    inset -3px -3px 4px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(20, 18, 15, 0.65),
+    0 4px 10px rgba(0, 0, 0, 0.45);
+  color: #7c7669;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: not-allowed;
-  transition: border-color 0.15s, color 0.15s, background 0.15s, box-shadow 0.15s;
+  transition: color 0.2s ease, text-shadow 0.2s ease, transform 0.1s ease;
 }
 
-/* Lit gold — placement confirmed, all 3 slots filled */
+.hud-sidebar__play:disabled {
+  cursor: not-allowed;
+}
+
+/* Ready — Play, gold glow etched into the text */
 .hud-sidebar__play--ready {
-  border-color: #f0c040;
-  color: #f0c040;
-  background: rgba(240,192,64,0.08);
-  box-shadow: 0 0 16px rgba(240,192,64,0.25);
+  color: #f7d873;
+  text-shadow:
+    0 0 6px rgba(240, 192, 64, 0.85),
+    0 0 14px rgba(240, 192, 64, 0.55),
+    0 1px 0 rgba(0, 0, 0, 0.4);
   cursor: pointer;
 }
 .hud-sidebar__play--ready:hover {
-  background: rgba(240,192,64,0.16);
+  color: #ffe38f;
+  text-shadow:
+    0 0 8px rgba(240, 192, 64, 1),
+    0 0 20px rgba(240, 192, 64, 0.7),
+    0 1px 0 rgba(0, 0, 0, 0.4);
+}
+.hud-sidebar__play--ready:active {
+  transform: translateY(1px);
 }
 
-/* Dim skip — visible during reveal/transition, less prominent than Play */
+/* Skip — dim red glow, distinct from Ready at a glance */
 .hud-sidebar__play--skip {
-  border-color: #444;
-  color: #666;
+  color: #e07a7a;
+  text-shadow:
+    0 0 6px rgba(224, 82, 82, 0.8),
+    0 0 14px rgba(224, 82, 82, 0.45),
+    0 1px 0 rgba(0, 0, 0, 0.4);
   cursor: pointer;
 }
 .hud-sidebar__play--skip:hover {
-  border-color: #666;
-  color: #999;
+  color: #ff9d9d;
+  text-shadow:
+    0 0 8px rgba(224, 82, 82, 0.95),
+    0 0 20px rgba(224, 82, 82, 0.6),
+    0 1px 0 rgba(0, 0, 0, 0.4);
+}
+.hud-sidebar__play--skip:active {
+  transform: translateY(1px);
 }
 
 .hud-sidebar__menu-link {

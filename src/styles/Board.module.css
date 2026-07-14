@@ -133,21 +133,55 @@
   color: #555;
 }
 
+/* [BLOCK: Shuffle Button — Carved Stone, scaled down]
+   Same stone family as the Play/Skip button (HUD.module.css) — mottled
+   warm-grey gradient + a chunky inset bevel, just proportioned for this
+   smaller pill shape. No colored glow on this one (Shuffle has no
+   Ready/Skip-style state to signal) — enabled state gets a warm brighten
+   on hover instead, disabled just flattens/dims the stone. */
 .stack-col__shuffle {
-  padding: 6px 12px;
-  border-radius: 7px;
-  border: 1px solid #333;
-  background: transparent;
-  color: #777;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: none;
+  background:
+    radial-gradient(ellipse at 25% 20%, rgba(255, 252, 240, 0.06), transparent 50%),
+    radial-gradient(ellipse at 78% 78%, rgba(0, 0, 0, 0.2), transparent 55%),
+    linear-gradient(155deg, #6e6a5f 0%, #57534a 45%, #3c3933 100%);
+  box-shadow:
+    inset 1px 1px 1px rgba(255, 250, 235, 0.25),
+    inset -2px -2px 3px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(20, 18, 15, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  color: #b0aa9c;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   white-space: nowrap;
 }
 
-.stack-col__shuffle:disabled { opacity: 0.35; cursor: not-allowed; }
-.stack-col__shuffle:not(:disabled):hover { border-color: #555; color: #bbb; }
+.stack-col__shuffle:disabled {
+  color: #5c584f;
+  box-shadow:
+    inset 1px 1px 1px rgba(255, 250, 235, 0.1),
+    inset -2px -2px 3px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(20, 18, 15, 0.5);
+  cursor: not-allowed;
+}
+
+.stack-col__shuffle:not(:disabled):hover {
+  color: #e8e0cf;
+  box-shadow:
+    inset 1px 1px 1px rgba(255, 250, 235, 0.4),
+    inset -2px -2px 3px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(20, 18, 15, 0.6),
+    0 0 10px rgba(232, 224, 207, 0.25),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.stack-col__shuffle:not(:disabled):active {
+  transform: translateY(1px);
+}
 
 /* Discard pile column */
 .discard-col {
