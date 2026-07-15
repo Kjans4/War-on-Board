@@ -796,18 +796,30 @@ function App() {
     <>
       <div className={clsx(styles['app-shell'], styles['app-shell--table'])}>
 
-        {/* [SUB-BLOCK: Sidebar] */}
-        <div className={styles['app-sidebar']}>
-          <RoundCounter round={round} />
+        {/* [SUB-BLOCK: Left Sidebar — unified wood-panel frame]
+            Replaces the old three-piece floating layout (bare
+            RoundCounter, self-framed RoundHistory, bare PlayFooter) with a
+            single .left-sidebar frame (see App.module.css) split into a
+            header (Round Counter), a flex:1 scrollable body (RoundHistory
+            itself — it now only supplies the scrolling list, no frame of
+            its own, see RoundHistory.module.css), and a footer
+            (Play/Main Menu). Only the middle RoundHistory section
+            scrolls; header and footer stay pinned. */}
+        <div className={styles['left-sidebar']}>
+          <div className={styles['left-sidebar__header']}>
+            <RoundCounter round={round} />
+          </div>
           <RoundHistory history={roundHistory} />
-          <PlayFooter
-            phase={phase}
-            onConfirmPlacement={handleConfirmPlacement}
-            onSkip={handleSkip}
-            onBackToMenu={handleBackToMenu}
-            canConfirm={canConfirm}
-            canSkip={canSkip}
-          />
+          <div className={styles['left-sidebar__footer']}>
+            <PlayFooter
+              phase={phase}
+              onConfirmPlacement={handleConfirmPlacement}
+              onSkip={handleSkip}
+              onBackToMenu={handleBackToMenu}
+              canConfirm={canConfirm}
+              canSkip={canSkip}
+            />
+          </div>
         </div>
 
         {/* [SUB-BLOCK: Center — Battlefield + Hand] */}

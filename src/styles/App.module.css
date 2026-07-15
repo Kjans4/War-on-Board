@@ -29,17 +29,69 @@
   background-position: center;
 }
 
-.app-sidebar {
+/* [BLOCK: Left Sidebar — Unified Wood-Panel Frame]
+   Previously three floating pieces (a bare-layout .app-sidebar holding a
+   borderless RoundCounter, a self-framed .round-history in the middle —
+   see RoundHistory.module.css — and a borderless PlayFooter), with no
+   shared visual container. The warm beveled-silver frame + wood
+   background that used to live on .round-history alone now lives HERE
+   instead, so the whole sidebar — header, scrollable history, footer —
+   reads as one continuous panel. Two background layers, both `cover`, so
+   the wood photo fully fills this tall/narrow box top-to-bottom with no
+   gaps regardless of how the panel's own aspect ratio compares to the
+   source photo's (same reasoning as the old .round-history rule this
+   replaces — see git history / RoundHistory.module.css's remaining doc
+   comment on why `cover` and not `contain`, and why no
+   `background-attachment: fixed`).
+   `overflow: hidden` here (rather than on any child) is what lets the
+   middle RoundHistory section be the ONLY scrolling area — header and
+   footer are flex-shrink: 0, RoundHistory's own root is flex: 1 with its
+   own overflow, so this outer hidden just clips the frame's rounded
+   corners and stops any stray overflow from leaking past the border. */
+.left-sidebar {
   width: 200px;
   flex-shrink: 0;
   min-height: 0;
-  height: 100%;
+  margin: 20px 14px;
   display: flex;
   flex-direction: column;
-  padding: 20px 14px;
-  border-right: 1px solid var(--border, #222);
-  gap: 0;
+  border-radius: 10px;
+  border: 2px solid #a89f8f;
+  background-image: linear-gradient(rgba(10, 6, 3, 0.5), rgba(10, 6, 3, 0.5)), url('/round-history-wood.jpg');
+  background-size: cover, cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  overflow: hidden;
+  box-shadow:
+    inset 1px 1px 0 rgba(240, 230, 210, 0.35),
+    inset -1px -1px 0 rgba(35, 25, 15, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.35);
   box-sizing: border-box;
+}
+
+/* [BLOCK: Header — Round Counter]
+   A slight dark wash + a single bottom hairline (same beveled-silver tone
+   as the frame border, at low opacity) is enough to read as a distinct
+   "header strip" against the wood without boxing it in its own hard
+   frame — the outer .left-sidebar border already does that job. Never
+   scrolls (flex-shrink: 0) — only the RoundHistory panel between header
+   and footer does. */
+.left-sidebar__header {
+  flex-shrink: 0;
+  padding: 10px 14px 12px;
+  background: rgba(0, 0, 0, 0.22);
+  border-bottom: 1px solid rgba(168, 159, 143, 0.35);
+}
+
+/* [BLOCK: Footer — Play / Main Menu]
+   Mirrors the header treatment (same wash tone, same hairline, flipped to
+   the top edge) so header and footer read as a matched pair bracketing
+   the scrollable history in between. */
+.left-sidebar__footer {
+  flex-shrink: 0;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.22);
+  border-top: 1px solid rgba(168, 159, 143, 0.35);
 }
 
 /* [BLOCK: Center Column — Layout Fix]

@@ -1,10 +1,16 @@
 /* src/styles/HUD.module.css */
 
+/* [BLOCK: Round Counter]
+   Padding used to carry this element's own top/bottom clearance when it
+   floated directly in .app-sidebar. It now renders inside
+   .left-sidebar__header (see App.module.css), which owns that clearance
+   itself — padding here dropped to 0 so the two don't stack into
+   double-spacing. Gap between label/value is unchanged. */
 .hud-sidebar__round {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 2px 16px;
+  padding: 0;
   flex-shrink: 0;
 }
 
@@ -23,12 +29,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* [BLOCK: Footer]
+   Same reasoning as .hud-sidebar__round above — the top clearance this
+   used to own (padding-top: 12px) is now owned by the parent
+   .left-sidebar__footer wrapper instead, so it's dropped here to avoid
+   double-spacing. */
 .hud-sidebar__footer {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-top: 12px;
+  padding-top: 0;
 }
 
 /* [BLOCK: Play/Skip Button — Carved Stone, Big Bevel]

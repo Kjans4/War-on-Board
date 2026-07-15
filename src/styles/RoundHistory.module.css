@@ -1,35 +1,22 @@
 /* src/styles/RoundHistory.module.css */
 
-/* [BLOCK: Panel Frame — Warm Beveled Silver + Wood Texture]
-   Background was flat dark-blue (#0d0d1a), then table.jpg (too low-res
-   and landscape for this tall panel), then round-history-wood.jpg with
-   `background-attachment: fixed` — but `fixed` computes `cover` sizing
-   against the VIEWPORT (wide/landscape), not this panel's own (narrow,
-   tall) box, so a portrait image got scaled up massively to cover that
-   wide viewport, leaving only a tiny, heavily zoomed sliver visible here.
-   Fixed attachment dropped entirely; the two background layers now get
-   independent sizing instead (see the two comma-separated values below):
-   the dark wash layer (listed first, rendered on top) still uses `cover`
-   so it always fully fills the panel with no gaps, while the wood photo
-   layer (listed second, underneath) ALSO uses `cover` so it completely 
-   covers the entire frame with no gaps (scaled up to cover the vertical height). 
-   Border stays the warm beveled-silver frame. */
+/* [BLOCK: Scrollable History Section]
+   Was the top-level framed panel (border, border-radius, wood background,
+   box-shadow) on its own, floating between the sidebar's Round Counter and
+   Play/Main Menu buttons. That frame now lives on the shared parent
+   container instead (see App.module.css's .left-sidebar) — the whole
+   sidebar is one continuous wood-panel frame, and this element is just the
+   MIDDLE, scrollable section of it. `flex: 1` + `min-height: 0` let it
+   claim exactly the space left over between the sidebar's header and
+   footer; `overflow: hidden` here (the scrolling itself happens one level
+   down, on .round-history__panel) keeps this section's own box from ever
+   growing past that allotment. */
 .round-history {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
-  border: 2px solid #a89f8f;
-  background-image: linear-gradient(rgba(10, 6, 3, 0.5), rgba(10, 6, 3, 0.5)), url('/round-history-wood.jpg');
-  background-size: cover, cover;
-  background-position: center;
-  background-repeat: no-repeat;
   overflow: hidden;
-  box-shadow:
-    inset 1px 1px 0 rgba(240, 230, 210, 0.35),
-    inset -1px -1px 0 rgba(35, 25, 15, 0.55),
-    0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .round-history__heading {
