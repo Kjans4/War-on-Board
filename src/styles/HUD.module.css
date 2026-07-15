@@ -14,18 +14,43 @@
   flex-shrink: 0;
 }
 
+/* [BLOCK: Carved Wood Typography — Stamped Subheading]
+   "Round" is a mid-tier label sitting directly above the big carved
+   number — styled as if lightly pressed/stamped into the surface rather
+   than fully engraved: a translucent deep charcoal-brown ink (not a flat
+   opaque color, so a hint of the wood grain still reads through the
+   letterforms) plus a single soft, warm highlight along the bottom edge
+   of each glyph, as if catching a little light from below the press. */
 .hud-sidebar__round-label {
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #555;
-  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: rgba(21, 13, 10, 0.72);
+  text-shadow: 0 1px 0 rgba(255, 244, 222, 0.14);
 }
 
+/* [BLOCK: Carved Wood Typography — Deep Branded Number]
+   The round counter's own value (e.g. "2 / 9") is the single largest,
+   most prominent mark in the sidebar, so it gets the deepest treatment:
+   a near-black burnt-wood color (not pure black — #150d0a keeps a hint of
+   warmth so it still reads as "wood" rather than an inked-on digital
+   number) paired with a two-part text-shadow that reads as a carved
+   recess rather than flat print —
+     - a dark shadow sitting just ABOVE the glyph (simulates the top lip
+       of the carved groove throwing a shadow down into the letterform)
+     - a soft, warm, low-opacity highlight just BELOW it (simulates faint
+       light catching the groove's lower edge)
+   26px confirmed/kept as the intended size for this, the sidebar's most
+   prominent mark. */
 .hud-sidebar__round-value {
   font-size: 26px;
   font-weight: 700;
-  color: #ddd;
+  letter-spacing: 0.01em;
+  color: #150d0a;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(255, 232, 196, 0.18);
   font-variant-numeric: tabular-nums;
 }
 
@@ -50,7 +75,11 @@
    bottom-right, an inner edge ring for crisp definition, and a soft outer
    drop shadow so the whole button visually lifts off the sidebar. State
    is communicated by the LABEL, not the stone — see --ready/--skip below,
-   which only change text color/glow, never the shape or stone tone. */
+   which only change text color/glow, never the shape or stone tone.
+   Deliberately untouched by the Carved Wood typography pass — this
+   button's own glowing-text treatment already reads as a distinct,
+   lit-from-within game control (not sidebar body copy), and its label
+   text must stay legible/actionable rather than recede into the wood. */
 .hud-sidebar__play {
   padding: 12px;
   border-radius: 10px;

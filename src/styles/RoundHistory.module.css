@@ -19,13 +19,22 @@
   overflow: hidden;
 }
 
+/* [BLOCK: Carved Wood Typography — Stamped Subheading]
+   "ROUND HISTORY (n)" is a mid-tier label, same tier as the Round
+   Counter's "Round" caption in HUD.module.css — same recipe applied here
+   for visual consistency across the whole sidebar: a translucent deep
+   charcoal-brown ink (not flat opaque black) so the wood grain still
+   shows faintly through the letterforms, plus a soft warm highlight along
+   the bottom edge of the glyphs, as if lightly pressed/stamped into the
+   surface rather than fully carved. */
 .round-history__heading {
   padding: 10px 12px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #888;
+  letter-spacing: 0.08em;
+  color: rgba(21, 13, 10, 0.72);
+  text-shadow: 0 1px 0 rgba(255, 244, 222, 0.14);
   border-bottom: 1px solid rgba(168, 159, 143, 0.35);
   flex-shrink: 0;
 }
@@ -67,10 +76,19 @@
   gap: 6px;
 }
 
+/* [BLOCK: Carved Wood Typography — Stamped Subheading]
+   "Round N" per-entry label, same stamped treatment as the panel heading
+   above — same tier, so same ink/highlight recipe. Base color was a flat
+   light grey (#ccc) before, which read as plain on-screen text rather
+   than anything pressed into the wood beneath it; swapped for the same
+   translucent charcoal-brown + soft bottom highlight used elsewhere in
+   this tier. Font size/letter-spacing/weight unchanged — already sized
+   appropriately for this tier (11px). */
 .round-history__round-label {
   font-size: 11px;
   font-weight: 700;
-  color: #ccc;
+  color: rgba(21, 13, 10, 0.72);
+  text-shadow: 0 1px 0 rgba(255, 244, 222, 0.14);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   display: inline-flex;
@@ -78,7 +96,10 @@
   gap: 6px;
 }
 
-/* [BLOCK: Cascade Tag] */
+/* [BLOCK: Cascade Tag]
+   Left as-is — a small colored chip (like the outcome badges), not body
+   copy carved into the wood, so it keeps its own legible, saturated
+   treatment. */
 .round-history__cascade-tag {
   font-size: 9px;
   font-weight: 700;
@@ -141,6 +162,13 @@
   font-size: 9px;
 }
 
+/* [BLOCK: Outcome Badges — legibility preserved]
+   Deliberately NOT part of the carved/stamped typography pass — these are
+   small actionable-reading gameplay chips (Win/Loss/Tie/etc.) that sit on
+   their own solid, saturated color fill (see the per-state rules below),
+   not directly on the wood grain. They need to stay clean and instantly
+   legible at a glance, so they keep flat, opaque, high-contrast text
+   rather than any recessed/translucent ink treatment. */
 .round-history__outcome-badge {
   font-size: 8px;
   font-weight: 700;
