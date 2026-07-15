@@ -34,16 +34,27 @@
   gap: 6px;
 }
 
+/* [BLOCK: Carved Wood Typography — Board Pass]
+   "Opponent" / "You" row labels, bumped from 11px and switched from
+   system-ui to Cinzel (var(--heading)) — same family already used for
+   h1/h2 titles and the sidebar's carved counter, so the board reads as
+   one consistent typographic voice rather than mixing fonts across
+   panels. Owner-tinted colors (previously #6a9 player / #a66 AI) are
+   dropped in favor of the single shared carved dark-brown used
+   everywhere in this pass — see the color/shadow note on
+   .stack-col__count below for why the highlight shadow here is brighter
+   than the sidebar's equivalent. */
 .battlefield__row-label {
-  font-size: 11px;
+  font-family: var(--heading);
+  font-size: 15px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-weight: 600;
-  color: #555;
+  letter-spacing: 0.08em;
+  color: #150d0a;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 232, 196, 0.3);
 }
-
-.battlefield__row--player .battlefield__row-label { color: #6a9; }
-.battlefield__row--ai     .battlefield__row-label { color: #a66; }
 
 .battlefield__slots {
   display: flex;
@@ -84,12 +95,20 @@
     0 -1px 0 rgba(255, 250, 235, 0.15);
 }
 
+/* [BLOCK: Carved Wood Typography — Board Pass]
+   "vs" divider label — same treatment/tier as the smaller board labels
+   (stack/discard captions) rather than the row labels, since it's a
+   quieter, secondary mark sitting between the two battle rows. */
 .battlefield__divider-label {
-  font-size: 11px;
+  font-family: var(--heading);
+  font-size: 13px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #333;
-  font-weight: 700;
+  color: #150d0a;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 232, 196, 0.3);
 }
 
 /* Stack columns */
@@ -110,10 +129,25 @@
   gap: 4px;
 }
 
+/* [BLOCK: Carved Wood Typography — Board Pass]
+   Stack count is the biggest, most-glanced-at number on the board (how
+   many cards are left) — given the largest size in this pass (20px ->
+   28px) and switched to Cinzel, same carved dark-brown/shadow recipe as
+   every other board label so the whole board shares one voice. This
+   label sits directly over the dark table background (no light wood
+   surface behind it like the sidebar's counter has), so a literal
+   #150d0a fill would nearly disappear on its own — the brighter warm
+   bottom-highlight shadow (0.3 opacity here vs the sidebar's 0.18) is
+   what keeps the digit's shape legible: the fill reads as a dark carved
+   groove, the highlight is the light catching its lower edge. */
 .stack-col__count {
-  font-size: 20px;
+  font-family: var(--heading);
+  font-size: 28px;
   font-weight: 700;
-  color: #ddd;
+  color: #150d0a;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 232, 196, 0.3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -126,11 +160,20 @@
   box-shadow: 2px 2px 0 #161622, 4px 4px 0 #111;
 }
 
+/* [BLOCK: Carved Wood Typography — Board Pass]
+   Smallest tier — stack captions ("Opponent"/"You" under the deck icon).
+   Same carved recipe, sized just below the divider label since these are
+   the quietest text on the board. */
 .stack-col__label {
-  font-size: 10px;
+  font-family: var(--heading);
+  font-size: 13px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #555;
+  color: #150d0a;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 232, 196, 0.3);
 }
 
 /* [BLOCK: Shuffle Button — Carved Stone, scaled down]
@@ -138,7 +181,11 @@
    warm-grey gradient + a chunky inset bevel, just proportioned for this
    smaller pill shape. No colored glow on this one (Shuffle has no
    Ready/Skip-style state to signal) — enabled state gets a warm brighten
-   on hover instead, disabled just flattens/dims the stone. */
+   on hover instead, disabled just flattens/dims the stone.
+   Deliberately excluded from the Carved Wood typography pass, same
+   reasoning as HUD.module.css's Play/Skip button — this is a lit,
+   actionable game control, not board body copy, so its own glow-based
+   text treatment stays as-is. */
 .stack-col__shuffle {
   padding: 6px 14px;
   border-radius: 8px;
@@ -191,10 +238,18 @@
   gap: 4px;
 }
 
+/* [BLOCK: Carved Wood Typography — Board Pass]
+   Discard count — same recipe as the stack count above, one size down
+   (16px -> 22px) to keep the discard pile visually secondary to the
+   live/active stack count. */
 .discard-col__count {
-  font-size: 16px;
+  font-family: var(--heading);
+  font-size: 22px;
   font-weight: 700;
-  color: #998;
+  color: #150d0a;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 232, 196, 0.3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -208,11 +263,18 @@
   opacity: 0.85;
 }
 
+/* [BLOCK: Carved Wood Typography — Board Pass]
+   Discard caption — same tier/recipe as .stack-col__label above. */
 .discard-col__label {
-  font-size: 9px;
+  font-family: var(--heading);
+  font-size: 12px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #665;
+  color: #150d0a;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 232, 196, 0.3);
 }
 
 /* [BLOCK: Dragon Attack Overlay] */
@@ -240,6 +302,11 @@
   box-shadow: 0 0 28px rgba(224,82,82,0.45);
 }
 
+/* [BLOCK: Dragon Overlay Text]
+   Deliberately excluded from the Carved Wood typography pass — this is a
+   momentary, high-drama banner meant to pop with its owner's own glow
+   color (gold for the player, red for AI, set below), not recede as
+   carved wood. Left exactly as it was; size/family untouched. */
 .dragon-overlay__text {
   font-size: 22px;
   font-weight: 800;

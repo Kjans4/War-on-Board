@@ -80,12 +80,25 @@
   line-height: 1;
 }
 
+/* [BLOCK: Carved Wood Typography — Board Pass]
+   Fallback text label (Sword/Arrow/Shield/Dragon), shown only when a card
+   has no photo art (currently just Dragon — see Card.tsx's hasImage
+   logic). Switched to Cinzel and the same carved dark-brown/shadow recipe
+   as the rest of the board pass so it matches stack counts, row labels,
+   etc. Bumped from 11px to 13px, same tier as the board's smaller
+   captions. This sits on a colored card background (not the bare table),
+   so the standard shadow pair from Board.module.css is enough to keep it
+   legible here — no extra brightening needed. */
 .card__label {
-  font-size: 11px;
-  font-weight: 600;
+  font-family: var(--heading);
+  font-size: 13px;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #ccc;
+  color: #150d0a;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 232, 196, 0.3);
 }
 
 .card__back-symbol {
