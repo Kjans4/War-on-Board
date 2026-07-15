@@ -111,6 +111,23 @@
     0 1px 0 rgba(255, 232, 196, 0.3);
 }
 
+/* [BLOCK: Layout — Battlefield Column Balance Fix]
+   Wraps an invisible clone of the AI's real StackIcon, rendered on the
+   PLAYER's side of .battlefield-row (see Board.tsx) — purely occupies the
+   same footprint the AI's visible stack icon takes up on the opposite
+   side. The player's own stack icon was relocated out of Board entirely
+   in an earlier layout pass (it now lives next to Hand — see
+   PlayerStackControls in App.tsx), which left this column holding only
+   the (narrower, shorter) Discard pile — a real, if usually small,
+   width/height mismatch between the two side columns of a row that's
+   otherwise centered via `justify-content: center`. This spacer restores
+   an equal footprint on both sides without making anything actually
+   visible or interactive. */
+.stack-col-wrap__ghost {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* Stack columns */
 .stack-col-wrap {
   display: flex;

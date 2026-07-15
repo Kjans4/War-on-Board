@@ -94,6 +94,24 @@
   border-top: 1px solid rgba(168, 159, 143, 0.35);
 }
 
+/* [BLOCK: Right-Edge Spacer — Global Centering Fix]
+   .app-shell lays out as [left-sidebar][app-center], where app-center is
+   flex:1 and centers ITS OWN contents within whatever space is left over.
+   With nothing balancing the sidebar's ~228px footprint (200px width +
+   14px margin each side, see .left-sidebar) on the right, that leftover
+   space's midpoint sits well right of the page's true center — the board
+   was centering correctly relative to app-center, just not relative to
+   the actual viewport, which read as the whole layout leaning right.
+   This spacer mirrors the sidebar's exact footprint on the opposite edge
+   (see App.tsx, rendered as a plain empty div after app-center) so
+   app-center's remaining space is symmetric and its internal centering
+   lines up with the page's true center. Purely structural — no visual
+   styling, never rendered with content. */
+.app-shell__spacer {
+  width: 228px;
+  flex-shrink: 0;
+}
+
 /* [BLOCK: Center Column — Layout Fix]
    Was `justify-content: flex-start` with a flat 36px top padding — on
    shorter viewports this pinned the whole Board+Hand block to the top and
@@ -116,25 +134,60 @@
   box-sizing: border-box;
 }
 
-/* [BLOCK: Hand + Stack Row]
-   Houses the player's fanned Hand alongside PlayerStackControls (deck +
-   Shuffle) — previously an inline style on the wrapping div in App.tsx;
-   promoted to a real class so it can carry its own bottom clearance.
-   Hand.tsx's fan effect shifts outer cards down via `transform:
-   translateY()` for the arc look — that's a purely visual shift and adds
-   nothing to the box's layout height, so without extra clearance here the
-   fanned cards' bottom edge can crowd (or, in a tight viewport, graze) the
-   row's own bottom edge. This padding-bottom exists specifically to cover
-   that spill (max shift is ~14px at the default 5-card hand; padding here
-   plus Hand.module.css's own 10px bottom padding covers it with margin
-   to spare). */
+/* [BLOCK: Board + Hand Column — Width-Matching Wrapper]
+   Groups Board and the Hand/Stack row into a single flex column with the
+   default `align-items: stretch` — since this wrapper itself has no
+   explicit width (auto-sized against app-center's centered layout), the
+   browser sizes it to fit its WIDEST child (Board, which is naturally
+   wider than Hand+PlayerStackControls combined), and `stretch` then
+   forces every other child — namely .app-hand-row — to that same width.
+   This is what lets .app-hand-row's own symmetric-spacer trick (below)
+   work without hardcoding any pixel widths: the row's width is always
+   guaranteed to equal Board's actual rendered width, whatever that is. */
+.app-board-column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 20px;
+}
+
+/* [BLOCK: Hand + Stack Row — Drift-Proof Layout]
+   Previously a single centered flex group (Hand + PlayerStackControls
+   together, via `justify-content: center`) — since Hand's own width
+   swings noticeably with card count (2 cards vs. 5 cards is a large
+   difference), the midpoint of that COMBINED group shifted every time a
+   card was placed/drawn, and PlayerStackControls rode along as a flex
+   sibling — visibly drifting left/right instead of staying anchored.
+   Reworked into three regions instead: two empty flex:1 "side" boxes
+   flanking Hand, so Hand is always centered on the ROW'S true midpoint
+   (not the group's) regardless of its own width, and PlayerStackControls
+   sits inside the right side box with `justify-content: flex-end` — since
+   .app-board-column above guarantees this row's total width never
+   changes, StackControls' anchor point (the row's own right edge, which
+   equals Board's own right edge) is completely stable no matter how wide
+   Hand gets. */
 .app-hand-row {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 24px;
   padding-bottom: 8px;
+}
+
+/* [BLOCK: Hand + Stack Row — Side Regions]
+   Flex:1 so both sides grow/shrink equally as Hand's width changes,
+   keeping Hand centered on the row's true midpoint. `min-width: 0` lets
+   these shrink below their content size if the row is ever tighter than
+   Hand+StackControls' combined natural width, rather than forcing
+   overflow. The right side's `justify-content: flex-end` is what pins
+   PlayerStackControls flush against the row's (== Board's) right edge —
+   see .app-hand-row's doc comment above for why that anchor never moves. */
+.app-hand-row__side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.app-hand-row__side--right {
+  justify-content: flex-end;
 }
 
 .app-title {

@@ -834,7 +834,15 @@ function App() {
               </p>
             </div>
           ) : (
-            <>
+            /* [Layout — Centering Fix] Board and the Hand/Stack row are now
+               grouped in one flex-column wrapper (align-items: stretch by
+               default) instead of being two separate children of
+               app-center — see App.module.css's .app-board-column doc
+               comment for why: it lets .app-hand-row inherit Board's own
+               rendered width automatically, which is what makes the row's
+               symmetric side-regions below actually work (they need a
+               stable, Board-matched width to distribute against). */
+            <div className={styles['app-board-column']}>
               <Board
                 playerSlots={playerSlots}
                 aiSlots={aiSlots}
@@ -863,14 +871,17 @@ function App() {
                 }
                 registerRef={registerRef}
               />
-              {/* [Layout] Player's stack icon + Shuffle button sit to the
-                  right of Hand, matching the opponent's stack-next-to-hand
-                  look — see design discussion. Discard stays inside Board.
-                  Now a real CSS class (.app-hand-row) instead of an inline
-                  style — see App.module.css's doc comment on why it also
-                  carries its own bottom clearance for the Hand's fan
-                  spill. */}
+              {/* [Layout — Drift-Proof Hand Row] Three regions instead of a
+                  single centered flex group: an empty flex:1 spacer on the
+                  left, Hand in the middle (always centered on the ROW's
+                  midpoint now, not the old Hand+StackControls group's —
+                  see App.module.css's .app-hand-row doc comment for why
+                  the old approach drifted), and a flex:1 region on the
+                  right that pins PlayerStackControls flush against the
+                  row's own right edge via justify-content: flex-end. That
+                  anchor point never moves regardless of Hand's width. */}
               <div className={styles['app-hand-row']}>
+                <div className={styles['app-hand-row__side']} aria-hidden="true" />
                 <Hand
                   hand={playerHand}
                   selectedCardId={selectedCardId}
@@ -882,22 +893,34 @@ function App() {
                     dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'player', cardId, newType })
                   }
                 />
-                <PlayerStackControls
-                  count={playerStack.length}
-                  onShuffleStack={handleShuffleStack}
-                  canShuffle={canShuffle}
-                  devMode={devMode}
-                  playerStack={playerStack}
-                  canEditStacks={canShuffle}
-                  onSwapCard={(cardId, newType) =>
-                    dispatch({ type: 'DEV_SWAP_STACK_CARD', owner: 'player', cardId, newType })
-                  }
-                  registerRef={registerRef}
-                />
+                <div className={clsx(styles['app-hand-row__side'], styles['app-hand-row__side--right'])}>
+                  <PlayerStackControls
+                    count={playerStack.length}
+                    onShuffleStack={handleShuffleStack}
+                    canShuffle={canShuffle}
+                    devMode={devMode}
+                    playerStack={playerStack}
+                    canEditStacks={canShuffle}
+                    onSwapCard={(cardId, newType) =>
+                      dispatch({ type: 'DEV_SWAP_STACK_CARD', owner: 'player', cardId, newType })
+                    }
+                    registerRef={registerRef}
+                  />
+                </div>
               </div>
-            </>
+            </div>
           )}
         </div>
+
+        {/* [SUB-BLOCK: Right-Edge Spacer — Global Centering Fix]
+            Mirrors .left-sidebar's exact footprint (200px + 14px margin
+            each side = 228px) on the opposite edge of .app-shell, so
+            app-center's remaining flex space is symmetric and its own
+            internal centering lines up with the page's true center
+            instead of the sidebar-skewed leftover space. Purely
+            structural — no content, never interactive. See
+            App.module.css's .app-shell__spacer doc comment. */}
+        <div className={styles['app-shell__spacer']} aria-hidden="true" />
 
       </div>
 

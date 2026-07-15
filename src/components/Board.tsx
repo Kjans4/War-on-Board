@@ -587,8 +587,22 @@ export function Board({
         {/* [SUB-BLOCK: Player Discard — right edge, floats toward player's row]
             Stack icon + Shuffle button moved out to PlayerStackControls.tsx,
             rendered next to <Hand> in App.tsx — see the [Layout] note on
-            BoardProps. Discard stays here, unchanged. */}
+            BoardProps. Discard stays here, unchanged.
+            [Layout — Battlefield Column Balance Fix] A hidden clone of the
+            AI's real StackIcon (same "Opponent" label, so its computed
+            width matches the AI column's widest content exactly) is added
+            above the Discard pile here — see Board.module.css's
+            .stack-col-wrap__ghost doc comment for why: since the player's
+            real stack icon lives elsewhere now, this column would
+            otherwise only ever hold the narrower Discard pile, leaving
+            .battlefield-row's two side columns slightly mismatched in
+            footprint even though the row centers via justify-content.
+            visibility:hidden keeps it fully invisible and non-interactive
+            — it exists purely to occupy the same space. */}
         <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
+          <div className={styles['stack-col-wrap__ghost']} aria-hidden="true">
+            <StackIcon count={0} label="Opponent" />
+          </div>
           <DiscardPile
             count={playerDiscardCount}
             elRef={(el) => registerRef?.('discard-player', el)}
