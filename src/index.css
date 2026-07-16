@@ -60,21 +60,32 @@
 }
 
 /*
-  [BLOCK: Root Container — Phase 4 layout fix]
+  [BLOCK: Root Container — Phase 4 layout fix, + Full-Bleed Width update]
   Was `min-height: 100svh` — a *minimum* lets the box grow to fit content
   with no ceiling, which silently defeated every "flex:1 / min-height:0"
   scroll-containment trick further down the tree (App shell -> sidebar ->
   round history). Changed to a fixed `height` + `overflow: hidden` so
   there's an actual bounded container for the rest of the layout to clip
   and scroll against. This is the real fix for "page becomes scrollable
-  when round history gets long."
+  when round history gets long." That part is unchanged here.
+
+  What DID change: width was previously capped at 1126px (`width: 1126px;
+  max-width: 100%;`) with `border-inline` framing it as a centered card —
+  on wider viewports this left visible page-background bars down both
+  sides, most noticeably behind MainMenu.module.css's full-bleed menu.jpg
+  (see that file — the art is meant to fill the whole screen, not a boxed
+  column). Switched to `width: 100%` with no max-width cap, so #root now
+  fills the actual viewport width and the art/table background stretch
+  edge-to-edge. `border-inline` is dropped along with the fixed width —
+  it existed specifically to frame the old boxed-card look, and a border
+  sitting flush against the browser's own edges reads as a stray line
+  rather than a frame, so removing it (not just letting it stick out) is
+  the correct pairing with this change, not a separate decision.
 */
 #root {
-  width: 1126px;
-  max-width: 100%;
+  width: 100%;
   margin: 0 auto;
   text-align: center;
-  border-inline: 1px solid var(--border);
   height: 100svh;
   overflow: hidden;
   display: flex;
