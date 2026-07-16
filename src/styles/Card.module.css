@@ -57,20 +57,47 @@
   border-style: dashed;
 }
 
-/* Type colors — still used as a fallback background for any type without
-   photo art (currently just Dragon). */
+/* Type colors — fallback background for any type without photo art. All
+   three now have photo art (see Card.tsx), so these only ever show for a
+   split second before an image loads, or if an image URL 404s. */
 .card--sword  { border-color: #e05252; background: #2a1a1a; }
 .card--arrow  { border-color: #52b0e0; background: #1a2230; }
 .card--shield { border-color: #52c87a; background: #1a2a1e; }
 
-/* Dragon — owner-aware coloring, untouched by the Card Art pass. */
-.card--dragon-player { border-color: #f0c040; background: #2a2410; box-shadow: 0 0 10px rgba(240,192,64,0.25); }
-.card--dragon-ai     { border-color: #e05252; background: #2a1010; box-shadow: 0 0 10px rgba(224,82,82,0.25); }
+/* [Card Art — Dragon] Owner-aware coloring — border-color + glow stay the
+   same as before the Dragon photo existed. `background` here is now JUST
+   a flat fallback color (shown only when there's no image, i.e.
+   Card.tsx's !hasImage case) — background-size/background-position are
+   set EXPLICITLY rather than left to the `background` shorthand, because
+   that shorthand resets both to their defaults (auto / 0% 0%) when not
+   given, and these classes are declared later in the file than .card's
+   own background-size: cover; background-position: center — so without
+   this, a face-up Dragon photo rendered at native res anchored top-left
+   instead of covering the card (the "zoomed into one corner" bug). Match
+   .card's own cover/center exactly so the photo (set inline via
+   Card.tsx's style={backgroundImage}) fills the card correctly whether or
+   not this class's flat background-color is also showing underneath it. */
+.card--dragon-player {
+  border-color: #f0c040;
+  background: #2a2410;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 0 10px rgba(240,192,64,0.25);
+}
+.card--dragon-ai {
+  border-color: #e05252;
+  background: #2a1010;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 0 10px rgba(224,82,82,0.25);
+}
 
 /* [Card Art] Photo-backed card (Sword/Arrow/Shield, face-up). The photo
    itself is set inline via style={backgroundImage} in Card.tsx — this
    class just governs the border treatment framing it. Content (badges)
-   is positioned absolutely, so no flex-centering changes are needed. */
+   is positioned absolutely, so no flex-centering changes are needed.
+   Not applied to Dragon — its own colorClass (above) carries the
+   owner-aware border/glow instead; see Card.tsx's showPhotoClass. */
 .card--photo {
   border-color: #555;
 }
@@ -80,25 +107,12 @@
   line-height: 1;
 }
 
-/* [BLOCK: Carved Wood Typography — Board Pass]
-   Fallback text label (Sword/Arrow/Shield/Dragon), shown only when a card
-   has no photo art (currently just Dragon — see Card.tsx's hasImage
-   logic). Switched to Cinzel and the same carved dark-brown/shadow recipe
-   as the rest of the board pass so it matches stack counts, row labels,
-   etc. Bumped from 11px to 13px, same tier as the board's smaller
-   captions. This sits on a colored card background (not the bare table),
-   so the standard shadow pair from Board.module.css is enough to keep it
-   legible here — no extra brightening needed. */
 .card__label {
-  font-family: var(--heading);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #150d0a;
-  text-shadow:
-    0 -1px 1px rgba(0, 0, 0, 0.6),
-    0 1px 0 rgba(255, 232, 196, 0.3);
+  color: #ccc;
 }
 
 .card__back-symbol {
