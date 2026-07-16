@@ -21,8 +21,26 @@
    sidebar/board UI legible on top of it. Applied only to the game-screen
    instance of .app-shell (see App.tsx, which adds this modifier class
    only on the Game render, not the Main Menu render) — .app-shell alone
-   stays a plain layout container with no background of its own. */
+   stays a plain layout container with no background of its own.
+
+   [BLOCK: Boxed Game Frame — game-screen only]
+   index.css's #root used to cap the WHOLE app (menu included) at 1126px
+   with a border-inline frame — that was removed so the Main Menu's
+   menu.jpg could go full-bleed edge-to-edge. The boxed, framed look reads
+   better for the actual game screen though (readability + a sense of
+   "board" containment), so it's restored here instead, scoped to this
+   modifier class only — .app-shell--table is only ever added on top of
+   .app-shell during the Game render (never Main Menu, see App.tsx), so
+   Main Menu stays full-bleed via plain .app-shell.
+   Purely a WIDTH change (max-width + centering margin + a vertical
+   border) — .app-shell's own `height: 100svh` and .left-sidebar's
+   `height: 100%` fix (see below) are both height/cross-axis concerns
+   this doesn't touch, so the sidebar's header/round-history/footer flex
+   distribution is unaffected. */
 .app-shell--table {
+  max-width: 1126px;
+  margin: 0 auto;
+  border-inline: 1px solid var(--border, #222);
   background-image: linear-gradient(rgba(6, 6, 10, 0.55), rgba(6, 6, 10, 0.55)), url('/table.jpg');
   background-repeat: no-repeat;
   background-size: cover;
