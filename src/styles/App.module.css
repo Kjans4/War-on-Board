@@ -34,9 +34,8 @@
    Main Menu stays full-bleed via plain .app-shell.
    Purely a WIDTH change (max-width + centering margin + a vertical
    border) — .app-shell's own `height: 100svh` and .left-sidebar's
-   `height: 100%` fix (see below) are both height/cross-axis concerns
-   this doesn't touch, so the sidebar's header/round-history/footer flex
-   distribution is unaffected. */
+   height constraints fix the height/cross-axis concerns, so the sidebar's 
+   header/round-history/footer flex distribution is unaffected. */
 .app-shell--table {
   max-width: 1126px;
   margin: 0 auto;
@@ -52,39 +51,26 @@
    borderless RoundCounter, a self-framed .round-history in the middle —
    see RoundHistory.module.css — and a borderless PlayFooter), with no
    shared visual container. The warm beveled-silver frame + wood
-   background that used to live on .round-history alone now lives HERE
-   instead, so the whole sidebar — header, scrollable history, footer —
-   reads as one continuous panel. Two background layers, both `cover`, so
-   the wood photo fully fills this tall/narrow box top-to-bottom with no
-   gaps regardless of how the panel's own aspect ratio compares to the
-   source photo's (same reasoning as the old .round-history rule this
-   replaces — see git history / RoundHistory.module.css's remaining doc
-   comment on why `cover` and not `contain`, and why no
-   `background-attachment: fixed`).
-   `overflow: hidden` here (rather than on any child) is what lets the
-   middle RoundHistory section be the ONLY scrolling area — header and
-   footer are flex-shrink: 0, RoundHistory's own root is flex: 1 with its
-   own overflow, so this outer hidden just clips the frame's rounded
-   corners and stops any stray overflow from leaking past the border.
+   background now lives HERE instead, so the whole sidebar — header, 
+   scrollable history, footer — reads as one continuous panel. Two background 
+   layers, both `cover`, so the wood photo fully fills this tall/narrow box 
+   top-to-bottom with no gaps.
+   `overflow: hidden` here is what lets the middle RoundHistory section 
+   be the ONLY scrolling area — header and footer are flex-shrink: 0, 
+   RoundHistory's own root is flex: 1 with its own overflow, so this outer 
+   hidden just clips the frame's rounded corners and stops any stray overflow 
+   from leaking past the border.
 
-   [BLOCK: Explicit height — fixes collapsed RoundHistory]
-   This was relying SOLELY on .app-shell's `align-items: stretch` (the
-   flex-row default) to receive its height — visually it did stretch (the
-   wood background fills the whole sidebar edge-to-edge), but that
-   stretched size wasn't reliably read as a DEFINITE height by the nested
-   column flex layout below it. Effect: .round-history's `flex: 1` had
-   nothing solid to grow against, so it collapsed to its own content size
-   (heading + empty-state text) instead of filling the gap between header
-   and footer — the footer then sat right under it instead of being
-   pushed to the bottom, leaving the rest of this box's own (still
-   full-height) background unclaimed by any child. Adding an explicit
-   `height: 100%` here (100% of .app-shell's own definite 100svh) gives
-   the column layout a solid basis to distribute from, so header/
-   round-history/footer now actually divide up the real available height
-   instead of each just sizing to its own content. */
+   [BLOCK: Fixed Height Constraint Fix]
+   Reverted the problematic auto-height 'shrink-wrap' setup. The container 
+   is now locked to the height of the viewport minus margins. Using `align-self: stretch` 
+   alongside `height: calc(100% - 40px)` guarantees a rigid frame height. 
+   Now, when history list entries increase, the scrollable container inside 
+   will scroll properly instead of stretching the outer border out of bounds. */
 .left-sidebar {
   width: 200px;
-  height: 100%;
+  align-self: stretch;
+  height: calc(100% - 40px);
   flex-shrink: 0;
   min-height: 0;
   margin: 20px 14px;

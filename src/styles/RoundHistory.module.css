@@ -17,6 +17,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding-bottom: 120px;
 }
 
 /* [BLOCK: Carved Wood Typography — Stamped Subheading]
@@ -43,6 +44,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden; /* Prevents the horizontal scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(168, 159, 143, 0.55) transparent;
 }
 
 .round-history__empty {
@@ -229,6 +233,6 @@
 
 .round-history__cascade-log-line {
   font-size: 10px;
-  color: #b39ddb;
+  color: #d1c4e9; /* Slightly brighter purple for readability */
   line-height: 140%;
 }
