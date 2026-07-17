@@ -112,23 +112,26 @@
 }
 
 /* [BLOCK: Layout — Battlefield Column Balance Fix]
-   Wraps an invisible clone of the AI's real StackIcon, rendered on the
-   PLAYER's side of .battlefield-row (see Board.tsx) — purely occupies the
-   same footprint the AI's visible stack icon takes up on the opposite
-   side. The player's own stack icon was relocated out of Board entirely
-   in an earlier layout pass (it now lives next to Hand — see
+   Wraps an invisible clone of the AI's real card pile (see Board.tsx),
+   rendered on the PLAYER's side of .battlefield-row — purely occupies
+   the same footprint the AI's visible stack pile takes up on the
+   opposite side. The player's own stack pile was relocated out of Board
+   entirely in an earlier layout pass (it now lives next to Hand — see
    PlayerStackControls in App.tsx), which left this column holding only
    the (narrower, shorter) Discard pile — a real, if usually small,
    width/height mismatch between the two side columns of a row that's
    otherwise centered via `justify-content: center`. This spacer restores
    an equal footprint on both sides without making anything actually
-   visible or interactive. */
+   visible or interactive. Cloned with count=3 (full depth-stack, 2 ghost
+   layers) rather than 0 — see Board.module.css's .card-pile__ghost — so
+   the spacer matches the WIDEST/TALLEST state the real pile can render
+   in, not just its empty-placeholder size. */
 .stack-col-wrap__ghost {
   visibility: hidden;
   pointer-events: none;
 }
 
-/* Stack columns */
+/* Stack columns (outer wrapper — holds a card pile + discard pile) */
 .stack-col-wrap {
   display: flex;
   flex-direction: column;
@@ -139,27 +142,104 @@
 .stack-col-wrap--ai     { align-self: flex-start; margin-top: 4px; }
 .stack-col-wrap--player { align-self: flex-end;   margin-bottom: 4px; }
 
-.stack-col {
+/* [BLOCK: Card Pile — Real Card Sizing, Depth Stack, Empty Placeholder]
+   Shared visual for BOTH the stack (deck) and discard pile — see
+   CardPile.tsx. Replaces the old .stack-col__icon (46x64) /
+   .discard-col__icon (40x56) decorative gradient boxes, which never
+   matched Card.module.css's actual 72x108 card size. The pile now
+   renders the real <Card> component face-down at native size, so deck
+   and discard visually ARE stacked real cards, consistent with hand/
+   board cards.
+
+   .card-pile__stack is a fixed 72x108 box regardless of pile state
+   (empty placeholder / single card / depth-stacked cards) so the
+   surrounding layout (.stack-col-wrap, .battlefield-row's column
+   balance) never reflows based on count. */
+.card-pile {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
 }
 
-/* [BLOCK: Carved Wood Typography — Board Pass]
-   Stack count is the biggest, most-glanced-at number on the board (how
-   many cards are left) — given the largest size in this pass (20px ->
-   28px) and switched to Cinzel, same carved dark-brown/shadow recipe as
-   every other board label so the whole board shares one voice. This
-   label sits directly over the dark table background (no light wood
-   surface behind it like the sidebar's counter has), so a literal
-   #150d0a fill would nearly disappear on its own — the brighter warm
-   bottom-highlight shadow (0.3 opacity here vs the sidebar's 0.18) is
-   what keeps the digit's shape legible: the fill reads as a dark carved
-   groove, the highlight is the light catching its lower edge. */
-.stack-col__count {
+.card-pile--clickable {
+  cursor: pointer;
+}
+
+.card-pile__stack {
+  position: relative;
+  width: 72px;
+  height: 108px;
+}
+
+.card-pile__top {
+  position: relative;
+  z-index: 3;
+}
+
+/* [BLOCK: Depth-Stack Ghosts]
+   1-2 extra face-down card shapes peeking out behind the top card
+   (bottom-right offset via inline transform in CardPile.tsx), capped at
+   2 regardless of actual count — a pile of 3 and a pile of 20 look
+   identical ("has depth"), so this never needs to track the real number.
+   Stack (deck) ghosts stay the same blue-purple as a normal card back;
+   discard ghosts are tinted red-brown so the two piles stay visually
+   distinct from across the board, same intent as the old icon boxes'
+   separate color families (#2a2a4a deck vs #3a2a2a discard). */
+.card-pile__ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 72px;
+  height: 108px;
+  border-radius: 8px;
+  z-index: 1;
+}
+
+.card-pile--stack .card-pile__ghost {
+  background: #2a2a4a;
+  border: 2px solid #444;
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.card-pile--discard .card-pile__ghost {
+  background: #2a1a1a;
+  border: 2px solid #4a3333;
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* [BLOCK: Discard Tint]
+   The top card itself reuses the generic face-down <Card> (blue-purple,
+   same as the deck) — filtered here to a duller, reddish-brown tone so
+   a discard pile still reads as visually distinct from the deck at a
+   glance, without needing a second card-back variant in Card.module.css. */
+.card-pile--discard .card-pile__top {
+  filter: sepia(0.35) hue-rotate(-25deg) saturate(1.25) brightness(0.88);
+  opacity: 0.9;
+}
+
+/* [BLOCK: Empty Pile — Placeholder]
+   count === 0 renders this instead of a card: same 72x108 footprint as
+   a real card (no layout jump when a pile empties out or refills), same
+   visual language as Slot.module.css's .slot__placeholder (translucent
+   dark-grey recess, no border) — reads as "empty slot for this pile"
+   rather than a card that happens to be missing. */
+.card-pile__placeholder {
+  width: 72px;
+  height: 108px;
+  border-radius: 8px;
+  background: rgba(45, 45, 50, 0.35);
+  box-sizing: border-box;
+}
+
+/* [BLOCK: Carved Wood Typography — Pile Count/Label]
+   Same carved dark-brown recipe as the rest of the board pass. Stack
+   (deck) gets the larger tier (28px count / 13px label) since it's the
+   more-glanced-at number; discard gets the smaller tier (22px / 12px),
+   same size relationship as the old .stack-col__count / .discard-col__count
+   pairing before this component was unified. */
+.card-pile__count {
   font-family: var(--heading);
-  font-size: 28px;
   font-weight: 700;
   color: #150d0a;
   text-shadow:
@@ -168,22 +248,16 @@
   font-variant-numeric: tabular-nums;
 }
 
-.stack-col__icon {
-  width: 46px;
-  height: 64px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #2a2a4a, #1a1a2e);
-  border: 2px solid #444;
-  box-shadow: 2px 2px 0 #161622, 4px 4px 0 #111;
+.card-pile__count--stack {
+  font-size: 28px;
 }
 
-/* [BLOCK: Carved Wood Typography — Board Pass]
-   Smallest tier — stack captions ("Opponent"/"You" under the deck icon).
-   Same carved recipe, sized just below the divider label since these are
-   the quietest text on the board. */
-.stack-col__label {
+.card-pile__count--discard {
+  font-size: 22px;
+}
+
+.card-pile__label {
   font-family: var(--heading);
-  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -191,6 +265,14 @@
   text-shadow:
     0 -1px 1px rgba(0, 0, 0, 0.6),
     0 1px 0 rgba(255, 232, 196, 0.3);
+}
+
+.card-pile__label--stack {
+  font-size: 13px;
+}
+
+.card-pile__label--discard {
+  font-size: 12px;
 }
 
 /* [BLOCK: Shuffle Button — Carved Stone, scaled down]
@@ -245,53 +327,6 @@
 
 .stack-col__shuffle:not(:disabled):active {
   transform: translateY(1px);
-}
-
-/* Discard pile column */
-.discard-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-/* [BLOCK: Carved Wood Typography — Board Pass]
-   Discard count — same recipe as the stack count above, one size down
-   (16px -> 22px) to keep the discard pile visually secondary to the
-   live/active stack count. */
-.discard-col__count {
-  font-family: var(--heading);
-  font-size: 22px;
-  font-weight: 700;
-  color: #150d0a;
-  text-shadow:
-    0 -1px 1px rgba(0, 0, 0, 0.6),
-    0 1px 0 rgba(255, 232, 196, 0.3);
-  font-variant-numeric: tabular-nums;
-}
-
-.discard-col__icon {
-  width: 40px;
-  height: 56px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #3a2a2a, #221515);
-  border: 2px solid #4a3333;
-  box-shadow: 2px 2px 0 #1a1010;
-  opacity: 0.85;
-}
-
-/* [BLOCK: Carved Wood Typography — Board Pass]
-   Discard caption — same tier/recipe as .stack-col__label above. */
-.discard-col__label {
-  font-family: var(--heading);
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #150d0a;
-  text-shadow:
-    0 -1px 1px rgba(0, 0, 0, 0.6),
-    0 1px 0 rgba(255, 232, 196, 0.3);
 }
 
 /* [BLOCK: Dragon Attack Overlay] */
