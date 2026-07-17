@@ -186,10 +186,24 @@
    .app-board-column above guarantees this row's total width never
    changes, StackControls' anchor point (the row's own right edge, which
    equals Board's own right edge) is completely stable no matter how wide
-   Hand gets. */
+   Hand gets.
+
+   [BLOCK: Hand/Deck Overlap Fix]
+   The fanned hand cards use CSS `rotate()` on their outer cards (see
+   Hand.tsx's fanStyle) — rotation doesn't affect box/layout width, so a
+   rotated card's rendered edge can extend visually past its own
+   calculated box edge. With no gap between Hand and the side regions,
+   that visual overhang crowded into the stack pile sitting in the right
+   side box (and would do the same to the mirrored ghost on the left).
+   A fixed gap here (matching .battlefield-row's own 28px gap, for visual
+   consistency between the board and this row) gives both sides breathing
+   room regardless of hand size — stays symmetric since it's applied to
+   the row itself, not to either side individually, so the drift-proof
+   centering above is unaffected. */
 .app-hand-row {
   display: flex;
   align-items: center;
+  gap: 28px;
   padding-bottom: 8px;
 }
 
