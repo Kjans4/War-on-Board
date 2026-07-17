@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Card as CardType, RPSType } from '../types/game';
+import { HAND_SIZE } from '../types/game';
 import { Card } from './Card';
 import { CardTypePicker, CardEditButton } from './CardTypePicker';
 import { getStackTypeCounts } from '../logic/deck';
@@ -49,6 +50,26 @@ function fanStyle(index: number, total: number): CSSProperties {
   };
 }
 
+// [BLOCK: Fixed Fan Footprint — Layout Stability]
+// FAN_CARD_WIDTH/FAN_OVERLAP mirror fanStyle's own numbers above (72px
+// card width from Card.module.css, -18px marginLeft overlap) — kept as
+// named constants here rather than re-deriving them, since they're only
+// used for this width calculation, not the transform math itself.
+//
+// Previously .hand__cards had no explicit width — it sized itself to fit
+// however many cards were actually in hand (justify-content: center just
+// re-centers WITHIN that shrinking box). As cards got played over a round,
+// the whole fan's bounding box shrank and re-centered itself smaller and
+// smaller, which reads as the hand visually "closing up" / drifting
+// inward rather than staying anchored in place. Locking .hand__cards to
+// the WIDEST possible fan (a full HAND_SIZE-card hand) means the box
+// itself never changes size — fewer cards just render centered within
+// that same fixed-width box, so the hand's on-screen position stays
+// constant regardless of how many cards remain.
+const FAN_CARD_WIDTH = 72;
+const FAN_OVERLAP = 18;
+const MAX_FAN_WIDTH = FAN_CARD_WIDTH + (HAND_SIZE - 1) * (FAN_CARD_WIDTH - FAN_OVERLAP);
+
 // [BLOCK: Component]
 export function Hand({
   hand,
@@ -69,7 +90,7 @@ export function Hand({
 
   return (
     <div className={styles.hand}>
-      <div className={styles.hand__cards}>
+      <div className={styles.hand__cards} style={{ minWidth: MAX_FAN_WIDTH }}>
         {hand.map((card, i) => (
           <div
             key={card.id}

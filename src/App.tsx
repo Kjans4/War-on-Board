@@ -8,6 +8,7 @@ import { findDragonPlacement } from './logic/combat';
 import { Board } from './components/Board';
 import type { RevealStep } from './components/Board';
 import { Hand } from './components/Hand';
+import { CardPile } from './components/CardPile';
 import { PlayerStackControls } from './components/PlayerStackControls';
 import { RoundCounter, PlayFooter } from './components/HUD';
 import { RoundHistory } from './components/RoundHistory';
@@ -24,6 +25,11 @@ import type {
 } from './types/game';
 import { SLOT_KEYS } from './types/game';
 import styles from './styles/App.module.css';
+// [Layout — Hand Row Symmetric Ghost] Reuses Board.module.css's
+// stack-col-wrap / stack-col__shuffle classes to render an invisible
+// clone of PlayerStackControls' footprint on the opposite side of Hand —
+// see the app-hand-row__side ghost below for why.
+import boardStyles from './styles/Board.module.css';
 
 // [BLOCK: Reveal + Auto-Transition Timings (ms)]
 // Base per-slot stagger timings — used verbatim for non-Dragon rounds, and
@@ -872,16 +878,43 @@ function App() {
                 registerRef={registerRef}
               />
               {/* [Layout — Drift-Proof Hand Row] Three regions instead of a
-                  single centered flex group: an empty flex:1 spacer on the
-                  left, Hand in the middle (always centered on the ROW's
-                  midpoint now, not the old Hand+StackControls group's —
-                  see App.module.css's .app-hand-row doc comment for why
-                  the old approach drifted), and a flex:1 region on the
-                  right that pins PlayerStackControls flush against the
-                  row's own right edge via justify-content: flex-end. That
-                  anchor point never moves regardless of Hand's width. */}
+                  single centered flex group: a spacer on the left, Hand in
+                  the middle (always centered on the ROW's midpoint — see
+                  App.module.css's .app-hand-row doc comment), and a region
+                  on the right that pins PlayerStackControls flush against
+                  the row's own right edge via justify-content: flex-end. */}
               <div className={styles['app-hand-row']}>
-                <div className={styles['app-hand-row__side']} aria-hidden="true" />
+                {/* [Layout — Hand Row Symmetric Ghost]
+                    Mirrors PlayerStackControls' actual rendered footprint
+                    (card pile + Shuffle button, stacked in a column) on the
+                    LEFT side of Hand. Previously an empty div: both sides
+                    are flex:1, so the free space itself still split evenly
+                    — but PlayerStackControls' own real content width on the
+                    right stacked on TOP of that equal share, making the
+                    right side wider than the left by that fixed amount.
+                    That silently pulled Hand off the row's true midpoint by
+                    the same fixed number of pixels regardless of hand size
+                    — invisible against a full 5-card hand's own width, but
+                    very visible once the hand shrank to 1-2 cards (see bug
+                    report: "hand moves closer as cards are played").
+                    Invisible/inert (visibility:hidden + pointer-events:none),
+                    same technique as Board.module.css's
+                    .stack-col-wrap__ghost — a real structural clone rather
+                    than a guessed pixel width, so it stays correct
+                    automatically if CardPile or the Shuffle button's own
+                    size ever changes. count=3 forces full depth-stack
+                    rendering to match the real pile's widest/tallest state;
+                    showLabel={false} mirrors the real pile's now-hidden
+                    "You" caption exactly. */}
+                <div className={styles['app-hand-row__side']} aria-hidden="true">
+                  <div
+                    className={boardStyles['stack-col-wrap']}
+                    style={{ visibility: 'hidden', pointerEvents: 'none' }}
+                  >
+                    <CardPile count={3} label="You" variant="stack" showLabel={false} />
+                    <button className={boardStyles['stack-col__shuffle']}>⇄ Shuffle</button>
+                  </div>
+                </div>
                 <Hand
                   hand={playerHand}
                   selectedCardId={selectedCardId}

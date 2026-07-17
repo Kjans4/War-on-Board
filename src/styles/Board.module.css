@@ -275,6 +275,17 @@
   font-size: 12px;
 }
 
+/* [BLOCK: Empty Pile — Text Color]
+   Same #150d0a carved dark-brown used everywhere else on the board, kept
+   consistent even though an empty pile has no light card surface behind
+   it to "carve" into. Plain drop-shadow (rather than the highlight/shadow
+   pair used on filled piles) still keeps it legible against dark wood. */
+.card-pile--empty .card-pile__count,
+.card-pile--empty .card-pile__label {
+  color: #150d0a;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
 /* [BLOCK: Shuffle Button — Carved Stone, scaled down]
    Same stone family as the Play/Skip button (HUD.module.css) — mottled
    warm-grey gradient + a chunky inset bevel, just proportioned for this

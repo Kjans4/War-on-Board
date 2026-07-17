@@ -388,6 +388,7 @@ export function Board({
             count={aiStackCount}
             label="Opponent"
             variant="stack"
+            showLabel={false}
             elRef={(el) => registerRef?.('stack-ai', el)}
             onClick={handleAiStackClick}
             clickable={devMode}
@@ -555,7 +556,7 @@ export function Board({
             space. */}
         <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
           <div className={styles['stack-col-wrap__ghost']} aria-hidden="true">
-            <CardPile count={3} label="Opponent" variant="stack" />
+            <CardPile count={3} label="Opponent" variant="stack" showLabel={false} />
           </div>
           <CardPile
             count={playerDiscardCount}

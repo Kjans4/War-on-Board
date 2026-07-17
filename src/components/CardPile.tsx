@@ -46,6 +46,17 @@ interface CardPileProps {
   // Optional override — default (`Inspect ${label}`) reads awkwardly for
   // some labels (e.g. "You"), so callers can supply a proper sentence.
   title?: string;
+  // [Layout — Redundant Label Removal] Stack (deck) piles sit directly
+  // above/below their own row's existing "Opponent"/"You" row label (see
+  // Board.module.css's .battlefield__row-label / App's sidebar layout),
+  // so a second identical caption under the pile itself just repeats
+  // information already on screen — call sites for stack piles pass
+  // showLabel={false}. Discard piles have no such sibling label anywhere
+  // else on the board, so they keep theirs; defaults to true so discard
+  // call sites don't need to opt in. The `label` value itself is still
+  // used for aria/title text either way — only the visible caption is
+  // suppressed, so accessibility is unaffected.
+  showLabel?: boolean;
 }
 
 export function CardPile({
@@ -56,6 +67,7 @@ export function CardPile({
   onClick,
   clickable = false,
   title,
+  showLabel = true,
 }: CardPileProps) {
   const depthLayers = depthLayerCount(count);
   const isEmpty = count === 0;
@@ -65,6 +77,7 @@ export function CardPile({
       className={clsx(
         styles['card-pile'],
         styles[`card-pile--${variant}`],
+        isEmpty && styles['card-pile--empty'],
         clickable && styles['card-pile--clickable'],
       )}
       ref={elRef}
@@ -73,6 +86,7 @@ export function CardPile({
       tabIndex={clickable ? 0 : undefined}
       onKeyDown={clickable ? (e) => e.key === 'Enter' && onClick?.() : undefined}
       title={clickable ? title ?? `Inspect ${label}` : undefined}
+      aria-label={!clickable ? label : undefined}
     >
       <span className={clsx(styles['card-pile__count'], styles[`card-pile__count--${variant}`])}>
         {count}
@@ -98,9 +112,11 @@ export function CardPile({
         )}
       </div>
 
-      <span className={clsx(styles['card-pile__label'], styles[`card-pile__label--${variant}`])}>
-        {label}
-      </span>
+      {showLabel && (
+        <span className={clsx(styles['card-pile__label'], styles[`card-pile__label--${variant}`])}>
+          {label}
+        </span>
+      )}
     </div>
   );
 }

@@ -66,6 +66,7 @@ export function PlayerStackControls({
           count={count}
           label="You"
           variant="stack"
+          showLabel={false}
           elRef={(el) => registerRef?.('stack-player', el)}
           onClick={devMode ? handleStackClick : undefined}
           clickable={devMode}
