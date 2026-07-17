@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import type { Card as CardType, RPSType } from '../types/game';
+import { CardPile } from './CardPile';
 import { StackInspector } from './StackInspector';
-// [Layout] Reuses Board.module.css's existing stack-col/stack-col-wrap/
+// [Layout] Reuses Board.module.css's existing stack-col-wrap / card-pile /
 // stack-col__shuffle classes rather than introducing a parallel CSS file —
-// this is visually the exact same "stack icon" widget Board.tsx already
+// this is visually the exact same "card pile" widget Board.tsx already
 // renders for the opponent, just relocated to sit beside <Hand> in
 // App.tsx instead of inside the battlefield row (per design discussion:
-// only the stack icon + Shuffle button move; Discard stays in Board).
+// only the stack pile + Shuffle button move; Discard stays in Board).
 import styles from '../styles/Board.module.css';
 
 // [BLOCK: Props]
@@ -17,7 +18,7 @@ interface PlayerStackControlsProps {
   count: number;
   onShuffleStack: () => void;
   canShuffle: boolean;
-  // [Dev Test Mode — Phase 1] Same convention as Board.tsx's stack icons —
+  // [Dev Test Mode — Phase 1] Same convention as Board.tsx's stack piles —
   // only clickable (to open the Stack Inspector) while devMode is on.
   devMode?: boolean;
   playerStack: CardType[];
@@ -25,7 +26,7 @@ interface PlayerStackControlsProps {
   // see App.tsx, which passes the same canShuffle value to both.
   canEditStacks?: boolean;
   onSwapCard?: (cardId: string, newType: RPSType) => void;
-  // Exposes the stack icon's DOM node up to App.tsx as 'stack-player' so
+  // Exposes the stack pile's DOM node up to App.tsx as 'stack-player' so
   // the return-flight animation can still measure it as a destination —
   // unchanged in meaning from when this lived inside Board.tsx.
   registerRef?: (key: string, el: HTMLElement | null) => void;
@@ -44,7 +45,7 @@ export function PlayerStackControls({
 }: PlayerStackControlsProps) {
   // [Dev Test Mode — Phase 1: Stack Inspector]
   // Whether the player's own stack panel is open — mirrors Board.tsx's
-  // aiInspectorOpen exactly, just for this side, now that each stack icon
+  // aiInspectorOpen exactly, just for this side, now that each stack pile
   // owns its own inspector state independently (see Board.tsx's [Layout]
   // note on why the old shared Owner|null toggle was split in two).
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -57,19 +58,19 @@ export function PlayerStackControls({
   return (
     <>
       <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
-        <div
-          className={clsx(styles['stack-col'], devMode && styles['stack-col--clickable'])}
-          ref={(el) => registerRef?.('stack-player', el)}
+        {/* [Card Art] Real 72x108 face-down card pile via <CardPile>,
+            replacing the old inline stack-col markup (which used the
+            decorative 46x64 .stack-col__icon box) — see CardPile.tsx /
+            Board.module.css's .card-pile block. */}
+        <CardPile
+          count={count}
+          label="You"
+          variant="stack"
+          elRef={(el) => registerRef?.('stack-player', el)}
           onClick={devMode ? handleStackClick : undefined}
-          role={devMode ? 'button' : undefined}
-          tabIndex={devMode ? 0 : undefined}
-          onKeyDown={devMode ? (e) => e.key === 'Enter' && handleStackClick() : undefined}
-          title={devMode ? 'Inspect your stack' : undefined}
-        >
-          <span className={styles['stack-col__count']}>{count}</span>
-          <div className={styles['stack-col__icon']} aria-hidden="true" />
-          <span className={styles['stack-col__label']}>You</span>
-        </div>
+          clickable={devMode}
+          title="Inspect your stack"
+        />
 
         <button
           className={styles['stack-col__shuffle']}

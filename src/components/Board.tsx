@@ -7,6 +7,7 @@ import type { BoardSlots, SlotKey, Card as CardType, Owner, RPSType, CascadeResu
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
+import { CardPile } from './CardPile';
 import { StackInspector } from './StackInspector';
 import { CardTypePicker, CardEditButton } from './CardTypePicker';
 import { getStackTypeCounts } from '../logic/deck';
@@ -240,7 +241,7 @@ interface BoardProps {
   // outside devMode, same convention as onAiCardClick/onAiSlotClick above.
   onAiSwapCard?: (cardId: string, newType: RPSType) => void;
   // [Layout] playerStackCount/onShuffleStack/canShuffle/playerStack removed
-  // from Board's props — the player's stack icon + shuffle button now
+  // from Board's props — the player's stack pile + shuffle button now
   // render next to <Hand> in App.tsx instead of inside the battlefield row
   // (see the new PlayerStackControls.tsx). The player's Discard pile stays
   // here, unchanged.
@@ -269,7 +270,7 @@ interface BoardProps {
   // hand row.
   devMode?: boolean;
   // [Dev Test Mode — Phase 1: Stack Inspector / Phase 2: Hand Swap]
-  // The AI's own stack contents — used by devMode's AI stack-icon click
+  // The AI's own stack contents — used by devMode's AI stack-pile click
   // (read-only inspector) AND as the source of per-type remaining counts
   // for the AI hand swap-picker (getStackTypeCounts(aiStack)). The
   // player's stack no longer passes through Board at all (see above) — the
@@ -288,7 +289,7 @@ interface BoardProps {
   // ever opens the AI's own inspector now, so App.tsx fixes owner: 'ai' at
   // the call site.
   onStackSwapCard?: (cardId: string, newType: RPSType) => void;
-  // Exposes DOM nodes for stack icons, discard piles, and slots up to
+  // Exposes DOM nodes for stack piles, discard piles, and slots up to
   // App.tsx by key (e.g. 'stack-player', 'discard-ai', 'slot-player-left')
   // so the return-flight animation can measure flight source/destination
   // rects. Purely a measurement hook — no visual effect on its own.
@@ -306,62 +307,6 @@ function fanStyle(index: number, total: number): CSSProperties {
     marginLeft: index === 0 ? 0 : -22,
     zIndex: total - index,
   };
-}
-
-// [BLOCK: Stack Icon]
-// [Dev Test Mode — Phase 1] onClick/clickable let App/Board open the Stack
-// Inspector panel — only ever wired to be clickable when devMode is on
-// (see Board's render below). Normal play never sets these, so the icon
-// stays purely decorative/count-display outside dev mode, unchanged from
-// before this phase.
-function StackIcon({
-  count,
-  label,
-  elRef,
-  onClick,
-  clickable = false,
-}: {
-  count: number;
-  label: string;
-  elRef?: (el: HTMLDivElement | null) => void;
-  onClick?: () => void;
-  clickable?: boolean;
-}) {
-  return (
-    <div
-      className={clsx(styles['stack-col'], clickable && styles['stack-col--clickable'])}
-      ref={elRef}
-      onClick={clickable ? onClick : undefined}
-      role={clickable ? 'button' : undefined}
-      tabIndex={clickable ? 0 : undefined}
-      onKeyDown={clickable ? (e) => e.key === 'Enter' && onClick?.() : undefined}
-      title={clickable ? `Inspect ${label.toLowerCase()} stack` : undefined}
-    >
-      <span className={styles['stack-col__count']}>{count}</span>
-      <div className={styles['stack-col__icon']} aria-hidden="true" />
-      <span className={styles['stack-col__label']}>{label}</span>
-    </div>
-  );
-}
-
-// [BLOCK: Discard Pile]
-// Visual home for cards that didn't survive the round — purely a display
-// of GameState.playerDiscard/aiDiscard's length, plus a landing point for
-// the return-flight animation (see App.tsx's buildReturnFlights).
-function DiscardPile({
-  count,
-  elRef,
-}: {
-  count: number;
-  elRef?: (el: HTMLDivElement | null) => void;
-}) {
-  return (
-    <div className={styles['discard-col']} ref={elRef}>
-      <span className={styles['discard-col__count']}>{count}</span>
-      <div className={styles['discard-col__icon']} aria-hidden="true" />
-      <span className={styles['discard-col__label']}>Discard</span>
-    </div>
-  );
 }
 
 // [BLOCK: Component]
@@ -433,17 +378,25 @@ export function Board({
     <>
       <div className={styles['battlefield-row']}>
 
-        {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row] */}
+        {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row]
+            [Card Art] Both piles now render via the shared <CardPile>
+            component — real 72x108 face-down cards with a depth-stack
+            effect, rather than the old decorative icon boxes. See
+            CardPile.tsx / Board.module.css's .card-pile block. */}
         <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--ai'])}>
-          <StackIcon
+          <CardPile
             count={aiStackCount}
             label="Opponent"
+            variant="stack"
             elRef={(el) => registerRef?.('stack-ai', el)}
             onClick={handleAiStackClick}
             clickable={devMode}
+            title="Inspect opponent stack"
           />
-          <DiscardPile
+          <CardPile
             count={aiDiscardCount}
+            label="Discard"
+            variant="discard"
             elRef={(el) => registerRef?.('discard-ai', el)}
           />
         </div>
@@ -585,26 +538,29 @@ export function Board({
         </div>
 
         {/* [SUB-BLOCK: Player Discard — right edge, floats toward player's row]
-            Stack icon + Shuffle button moved out to PlayerStackControls.tsx,
+            Stack pile + Shuffle button moved out to PlayerStackControls.tsx,
             rendered next to <Hand> in App.tsx — see the [Layout] note on
             BoardProps. Discard stays here, unchanged.
             [Layout — Battlefield Column Balance Fix] A hidden clone of the
-            AI's real StackIcon (same "Opponent" label, so its computed
-            width matches the AI column's widest content exactly) is added
-            above the Discard pile here — see Board.module.css's
-            .stack-col-wrap__ghost doc comment for why: since the player's
-            real stack icon lives elsewhere now, this column would
-            otherwise only ever hold the narrower Discard pile, leaving
-            .battlefield-row's two side columns slightly mismatched in
-            footprint even though the row centers via justify-content.
-            visibility:hidden keeps it fully invisible and non-interactive
-            — it exists purely to occupy the same space. */}
+            AI's real card pile (same "Opponent" label, rendered at full
+            depth-stack count so its footprint matches the AI column's
+            widest/tallest possible state) is added above the Discard pile
+            here — see Board.module.css's .stack-col-wrap__ghost doc
+            comment for why: since the player's real stack pile lives
+            elsewhere now, this column would otherwise only ever hold the
+            Discard pile, leaving .battlefield-row's two side columns
+            slightly mismatched in footprint even though the row centers
+            via justify-content. visibility:hidden keeps it fully invisible
+            and non-interactive — it exists purely to occupy the same
+            space. */}
         <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
           <div className={styles['stack-col-wrap__ghost']} aria-hidden="true">
-            <StackIcon count={0} label="Opponent" />
+            <CardPile count={3} label="Opponent" variant="stack" />
           </div>
-          <DiscardPile
+          <CardPile
             count={playerDiscardCount}
+            label="Discard"
+            variant="discard"
             elRef={(el) => registerRef?.('discard-player', el)}
           />
         </div>
@@ -613,7 +569,7 @@ export function Board({
 
       {/* [SUB-BLOCK: Dev Test Mode — Phase 1: Stack Inspector panel / Phase 3: editing]
           AI-only now — the player's own inspector lives in
-          PlayerStackControls.tsx alongside the moved stack icon. */}
+          PlayerStackControls.tsx alongside the moved stack pile. */}
       {devMode && aiInspectorOpen && (
         <StackInspector
           owner="ai"
