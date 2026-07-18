@@ -164,12 +164,20 @@
    forces every other child — namely .app-hand-row — to that same width.
    This is what lets .app-hand-row's own symmetric-spacer trick (below)
    work without hardcoding any pixel widths: the row's width is always
-   guaranteed to equal Board's actual rendered width, whatever that is. */
+   guaranteed to equal Board's actual rendered width, whatever that is.
+
+   [Fix — item #4b: Hand-to-"You"-Label Spacing]
+   gap tightened 20px -> 10px. This wrapper has exactly two children —
+   Board (which ends in the "You" row label) and the Hand/Stack row — so
+   this single gap value is entirely responsible for the vertical
+   distance between them. 20px read as too loose per screenshot review;
+   10px keeps Hand and the board visually connected without the fanned
+   cards touching the label beneath the battlefield slots. */
 .app-board-column {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 20px;
+  gap: 10px;
 }
 
 /* [BLOCK: Hand + Stack Row — Drift-Proof Layout]
