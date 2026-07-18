@@ -7,7 +7,6 @@ import type { BoardSlots, SlotKey, Card as CardType, Owner, RPSType, CascadeResu
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
-import { CardPile } from './CardPile';
 import { StackInspector } from './StackInspector';
 import { CardTypePicker, CardEditButton } from './CardTypePicker';
 import { getStackTypeCounts } from '../logic/deck';
@@ -20,20 +19,29 @@ import styles from '../styles/Board.module.css';
 // left          = left slot revealing
 // center        = left + center revealed
 // right         = all 3 slots revealed
-// phase1Resolve = [Battle Phases] "Phase 1" resolve beat — all 3 lanes are
-//   face-up; lost/tied-lost/tied lanes are final and their outcome badges
-//   pop here (see slotVisuals). Lanes that won their RPS matchup but are
-//   still cascade-pending stay dark until THEIR OWN cascade fight beat
-//   resolves (see hasCascadeLaneResolved below), or 'done' if the cascade
-//   never eliminates them at all.
+// phase1Resolve = [Battle Phases] "Phase 1" resolve beat — fires the flight
+//   animation for lanes that are final and never touched by a cascade
+//   (lost/tied-lost/tied). Purely a flight-timing marker now — see the
+//   "Instant Per-Slot Badges" pass below: badges themselves no longer wait
+//   for this step, they already popped in alongside their slot's own
+//   left/center/right flip.
 // cascadeFight  = [Battle Phases] one beat per cascade.log entry, fired
 //   sequentially by App.tsx alongside a matching cascadeFightIndex. The
 //   two lanes contesting THAT SPECIFIC beat get a glow accent (see
-//   isCurrentCascadeFightSlot), and the beat's loser (per
-//   hasCascadeLaneResolved) reveals its badge immediately — the winner
-//   stays dark, since it may still be challenged again in a later beat.
-// dragonOverlay = all 3 revealed, "Dragon Attack" banner showing (Dragon rounds only)
-// done          = all revealed, outcome badges shown, awaiting Next Round
+//   isCurrentCascadeFightSlot), and the beat's loser's badge flips from its
+//   provisional "Win" to its true final label ("Cascaded") right here (see
+//   hasCascadeLaneResolved / the display-override block in the render
+//   loops below) — the winner keeps showing "Win" provisionally, since it
+//   may still be challenged again in a later beat.
+// dragonOverlay = [Instant Dragon Reveal] all 3 revealed, "Dragon Attack"
+//   banner showing (Dragon rounds only) — outcome badges pop in at this
+//   SAME beat now (see slotVisuals' isDragonRound branch below), so the
+//   banner and the win/loss declaration read as one simultaneous moment
+//   instead of the banner playing over blank cards first.
+// done          = all revealed, every remaining badge shows (final
+//   catch-all for any cascade survivor never individually eliminated, and
+//   for Dragon rounds the badges are already showing by this point —
+//   'done' just holds them), awaiting Next Round
 export type RevealStep =
   | null
   | 'flipping'
@@ -47,9 +55,9 @@ export type RevealStep =
 
 // [BLOCK: Cascade Participation Helper]
 // [Battle Phases] Determines whether a given (owner, slotKey) lane entered
-// the cascade fight at all this round — i.e. whether its final outcome
-// badge should stay withheld past phase1Resolve instead of popping
-// immediately like a plain lost/tied/tied-lost lane.
+// the cascade fight at all this round — i.e. whether its badge should show
+// a PROVISIONAL "Win" (see the display-override block in the render loops
+// below) rather than its true final label the instant its slot reveals.
 //
 // Deliberately reads ONLY pendingCascade's own overrides/survivingSlots —
 // never re-derives lane-winners itself (that would mean re-running
@@ -63,7 +71,8 @@ export type RevealStep =
 // Guarded on cascade.triggered: when it's false (0 or 1 lane-winners this
 // round, or a Dragon round where cascade never runs at all), there was no
 // real fight regardless of what's sitting in survivingSlots — the sole
-// winner (if any) is just final in Phase 1, not cascade-pending.
+// winner (if any) is just final as 'won', not cascade-pending, so it
+// never needs the provisional-label treatment at all.
 function isCascadePending(
   cascade: CascadeResult | null,
   owner: Owner,
@@ -77,17 +86,24 @@ function isCascadePending(
 }
 
 // [BLOCK: Per-Fight Resolution Helper]
-// [Battle Phases — Phase 3] For a cascade-pending lane, determines whether
-// IT SPECIFICALLY has already lost its own cascade fight by the current
-// beat (cascadeFightIndex) — i.e. whether its badge should pop now rather
-// than waiting for 'done'. Only ever meaningful while stepping through
-// cascade.log in order (indices 0..cascadeFightIndex inclusive) — a lane
-// that's still winning (or hasn't fought yet) deliberately stays dark
-// here even after its own beat, since a persisting champion could still
-// fall to a LATER challenger; revealing "Win" prematurely would risk
-// having to silently flip it to "Cascaded" afterward, exactly the
-// spoiler/two-step problem Battle Phases exists to avoid. Only the
+// [Battle Phases — Phase 3 / Instant Per-Slot Badges]
+// For a cascade-pending lane, determines whether IT SPECIFICALLY has
+// already lost its own cascade fight by the current beat
+// (cascadeFightIndex) — i.e. whether its badge should flip from the
+// provisional "Win" it's been showing since its slot first revealed, over
+// to its true final label ("Cascaded"). Only ever meaningful while
+// stepping through cascade.log in order (indices 0..cascadeFightIndex
+// inclusive) — a lane that's still winning (or hasn't fought yet)
+// deliberately keeps showing "Win" here even after its own beat, since a
+// persisting champion could still fall to a LATER challenger; only the
 // eliminated side of a resolved fight is ever reported true.
+//
+// [Design note — Win-First Reveal] Per explicit design direction this
+// session, lanes now show "Win" the instant they're revealed and only
+// flip to "Cascaded" once they're actually eliminated — the reverse of
+// the previous no-spoiler policy (which withheld the badge entirely until
+// a lane's fate was fully known). See the display-override block in the
+// render loops below for where the provisional label is applied.
 function hasCascadeLaneResolved(
   cascade: CascadeResult | null,
   cascadeFightIndex: number | null,
@@ -106,7 +122,9 @@ function hasCascadeLaneResolved(
     if (entry.outcome === 'challengerWon' && championKey === target) return true;
     if (entry.outcome === 'tiedLost' && (championKey === target || challengerKey === target)) return true;
     // plain 'tied' eliminates neither side — both withdraw as survivors,
-    // so it never marks either lane "resolved" here; they wait for 'done'.
+    // so it never marks either lane "resolved" here; they keep showing
+    // "Win" until 'done' reconciles them (harmlessly — they finish as
+    // 'won' anyway, never overridden).
   }
 
   return false;
@@ -135,37 +153,45 @@ function isCurrentCascadeFightSlot(
   );
 }
 
-// [BLOCK: Per-slot visual state]
+// [BLOCK: Per-slot visual state — Instant Per-Slot Badges]
 // Given the current reveal step, returns whether each slot should be shown
 // face-down and whether its outcome badge/glow should be visible.
-// This decouples "what the game state says" from "what's currently on screen"
-// so the staggered reveal can show each slot individually while the reducer
-// already has the final outcome for all three.
 //
-// [Battle Phases] Badge timing, current rules:
-//   - flipping/left/center/right: cards flip face-up per the existing
-//     stagger, but NO badges yet regardless of lane —"all 3 cards battle"
-//     reads as one simultaneous beat rather than a trickle.
-//   - phase1Resolve / cascadeFight: non-cascade-pending lanes (lost,
-//     tied, tied-lost, or the sole winner of a no-cascade round) show
-//     their badge immediately. Cascade-pending lanes show their badge the
-//     moment cascadeLaneResolved is true for them (their own fight just
-//     eliminated them — see hasCascadeLaneResolved) and stay dark
-//     otherwise, including for a still-winning champion awaiting a later
-//     challenger.
-//   - dragonOverlay: no badges — the banner plays over face-up cards,
-//     badges wait for 'done' (Dragon rounds never set cascadePending
-//     true, so this branch is unaffected by cascade logic entirely).
-//   - done: every lane's badge shows, unconditionally — the final
-//     catch-all for any cascade survivor that was never individually
-//     eliminated.
+// [Design note — this session] Previously badges were withheld until
+// phase1Resolve/cascadeFight/done regardless of how far the card-flip
+// stagger had progressed — "all 3 cards battle" read as one simultaneous
+// beat, then results trickled in afterward. Per explicit design direction
+// this session, that's reversed for non-Dragon rounds: a slot's badge now
+// rides along with THAT SLOT'S OWN flip — Left shows its win/loss the
+// instant Left flips face-up, without waiting for Center/Right. Dragon
+// rounds are the one exception (see the isDragonRound branch below) — the
+// banner and every badge still appear together, at the dragonOverlay beat,
+// rather than each slot popping independently.
+//
+// Non-Dragon rules now:
+//   - flipping: nothing revealed yet, no badges.
+//   - left/center/right: cards flip face-up per the existing stagger, and
+//     each slot's badge appears the moment THAT slot flips. A cascade-
+//     pending lane's badge is a PROVISIONAL "Win" at this point — see the
+//     display-override block in the render loops below, which is what
+//     actually swaps the label to "Cascaded" once that lane is eliminated.
+//   - phase1Resolve/cascadeFight/done: all 3 already revealed by 'right',
+//     so these later steps are just "still revealed" — no visual change
+//     from this function's point of view (cascade label swaps happen via
+//     the display-override block, not here).
+//
+// Dragon rounds:
+//   - flipping/left/center/right: cards flip per buildDragonTimeline's
+//     jump-ahead schedule, no badges yet.
+//   - dragonOverlay/done: fully revealed AND badges shown — banner and
+//     win/loss declaration land together at dragonOverlay, done just
+//     holds that same state.
 function slotVisuals(
   slotKey: SlotKey,
   revealStep: RevealStep,
   hasCard: boolean,
   hideDuringPlacement: boolean,
-  cascadePending: boolean,
-  cascadeLaneResolved: boolean,
+  isDragonRound: boolean,
 ): { visuallyFaceDown: boolean; showOutcome: boolean } {
   if (revealStep === null) {
     // Pre-reveal — either mid-placement, or the brief gap between rounds.
@@ -184,36 +210,43 @@ function slotVisuals(
     return { visuallyFaceDown: false, showOutcome: false };
   }
 
-  if (revealStep === 'done') {
-    return { visuallyFaceDown: false, showOutcome: true };
-  }
-
-  if (revealStep === 'dragonOverlay') {
-    return { visuallyFaceDown: false, showOutcome: false };
-  }
-
-  if (revealStep === 'phase1Resolve' || revealStep === 'cascadeFight') {
-    const revealed = !cascadePending || cascadeLaneResolved;
-    return { visuallyFaceDown: false, showOutcome: revealed };
-  }
-
-  // flipping / left / center / right — card-flip stagger only. Badges
-  // never show here anymore; they wait for phase1Resolve at the earliest.
   const ORDER: SlotKey[] = ['left', 'center', 'right'];
+  const slotIndex = ORDER.indexOf(slotKey);
+
+  if (isDragonRound) {
+    // Banner + every badge land together at dragonOverlay; done just
+    // holds that same revealed/shown state.
+    if (revealStep === 'dragonOverlay' || revealStep === 'done') {
+      return { visuallyFaceDown: false, showOutcome: true };
+    }
+
+    // flipping/left/center/right — card-flip stagger only, per
+    // buildDragonTimeline's jump-ahead schedule. No badges yet.
+    const stepIndex: Record<string, number> = { flipping: -1, left: 0, center: 1, right: 2 };
+    const revealedUpTo = stepIndex[revealStep] ?? -1;
+    const revealed = slotIndex <= revealedUpTo;
+    return { visuallyFaceDown: !revealed, showOutcome: false };
+  }
+
+  // Non-Dragon — badge rides along with this slot's own flip. Every step
+  // from 'left' onward (including phase1Resolve/cascadeFight/done, which
+  // all occur after 'right') counts as "fully staggered past", so default
+  // any of those later-named steps to fully revealed.
   const stepIndex: Record<string, number> = {
-    flipping: -1, // nothing revealed yet
+    flipping: -1,
     left: 0,
     center: 1,
     right: 2,
+    phase1Resolve: 2,
+    cascadeFight: 2,
+    done: 2,
   };
-
-  const revealedUpTo = stepIndex[revealStep] ?? -1;
-  const slotIndex = ORDER.indexOf(slotKey);
+  const revealedUpTo = stepIndex[revealStep] ?? 2;
   const revealed = slotIndex <= revealedUpTo;
 
   return {
     visuallyFaceDown: !revealed,
-    showOutcome: false,
+    showOutcome: revealed,
   };
 }
 
@@ -241,7 +274,7 @@ interface BoardProps {
   // outside devMode, same convention as onAiCardClick/onAiSlotClick above.
   onAiSwapCard?: (cardId: string, newType: RPSType) => void;
   // [Layout] playerStackCount/onShuffleStack/canShuffle/playerStack removed
-  // from Board's props — the player's stack pile + shuffle button now
+  // from Board's props — the player's stack icon + shuffle button now
   // render next to <Hand> in App.tsx instead of inside the battlefield row
   // (see the new PlayerStackControls.tsx). The player's Discard pile stays
   // here, unchanged.
@@ -270,7 +303,7 @@ interface BoardProps {
   // hand row.
   devMode?: boolean;
   // [Dev Test Mode — Phase 1: Stack Inspector / Phase 2: Hand Swap]
-  // The AI's own stack contents — used by devMode's AI stack-pile click
+  // The AI's own stack contents — used by devMode's AI stack-icon click
   // (read-only inspector) AND as the source of per-type remaining counts
   // for the AI hand swap-picker (getStackTypeCounts(aiStack)). The
   // player's stack no longer passes through Board at all (see above) — the
@@ -289,7 +322,7 @@ interface BoardProps {
   // ever opens the AI's own inspector now, so App.tsx fixes owner: 'ai' at
   // the call site.
   onStackSwapCard?: (cardId: string, newType: RPSType) => void;
-  // Exposes DOM nodes for stack piles, discard piles, and slots up to
+  // Exposes DOM nodes for stack icons, discard piles, and slots up to
   // App.tsx by key (e.g. 'stack-player', 'discard-ai', 'slot-player-left')
   // so the return-flight animation can measure flight source/destination
   // rects. Purely a measurement hook — no visual effect on its own.
@@ -307,6 +340,62 @@ function fanStyle(index: number, total: number): CSSProperties {
     marginLeft: index === 0 ? 0 : -22,
     zIndex: total - index,
   };
+}
+
+// [BLOCK: Stack Icon]
+// [Dev Test Mode — Phase 1] onClick/clickable let App/Board open the Stack
+// Inspector panel — only ever wired to be clickable when devMode is on
+// (see Board's render below). Normal play never sets these, so the icon
+// stays purely decorative/count-display outside dev mode, unchanged from
+// before this phase.
+function StackIcon({
+  count,
+  label,
+  elRef,
+  onClick,
+  clickable = false,
+}: {
+  count: number;
+  label: string;
+  elRef?: (el: HTMLDivElement | null) => void;
+  onClick?: () => void;
+  clickable?: boolean;
+}) {
+  return (
+    <div
+      className={clsx(styles['stack-col'], clickable && styles['stack-col--clickable'])}
+      ref={elRef}
+      onClick={clickable ? onClick : undefined}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => e.key === 'Enter' && onClick?.() : undefined}
+      title={clickable ? `Inspect ${label.toLowerCase()} stack` : undefined}
+    >
+      <span className={styles['stack-col__count']}>{count}</span>
+      <div className={styles['stack-col__icon']} aria-hidden="true" />
+      <span className={styles['stack-col__label']}>{label}</span>
+    </div>
+  );
+}
+
+// [BLOCK: Discard Pile]
+// Visual home for cards that didn't survive the round — purely a display
+// of GameState.playerDiscard/aiDiscard's length, plus a landing point for
+// the return-flight animation (see App.tsx's buildReturnFlights).
+function DiscardPile({
+  count,
+  elRef,
+}: {
+  count: number;
+  elRef?: (el: HTMLDivElement | null) => void;
+}) {
+  return (
+    <div className={styles['discard-col']} ref={elRef}>
+      <span className={styles['discard-col__count']}>{count}</span>
+      <div className={styles['discard-col__icon']} aria-hidden="true" />
+      <span className={styles['discard-col__label']}>Discard</span>
+    </div>
+  );
 }
 
 // [BLOCK: Component]
@@ -360,10 +449,17 @@ export function Board({
   const canEditAiHand = devMode && placementActive && !!onAiSwapCard;
   const aiStackCounts = canEditAiHand ? getStackTypeCounts(aiStack) : null;
 
+  // [Instant Dragon Reveal] Whether this round is a Dragon round at all —
+  // drives slotVisuals' isDragonRound branch (badges wait for
+  // dragonOverlay instead of riding each slot's own flip). Reusing the
+  // same dragonOverlayOwner prop the banner itself keys off, so the two
+  // are guaranteed to agree — never derived separately.
+  const isDragonRound = dragonOverlayOwner !== null;
+
   // Overlay shows from the moment the timeline reaches 'dragonOverlay' and
-  // lingers through 'done' (so it's still visible while outcome badges pop
-  // in), then disappears once the round transitions and the caller resets
-  // dragonOverlayOwner to null.
+  // lingers through 'done' (so it's still visible while outcome badges
+  // hold), then disappears once the round transitions and the caller
+  // resets dragonOverlayOwner to null.
   const showDragonOverlay =
     dragonOverlayOwner !== null && (revealStep === 'dragonOverlay' || revealStep === 'done');
 
@@ -378,26 +474,17 @@ export function Board({
     <>
       <div className={styles['battlefield-row']}>
 
-        {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row]
-            [Card Art] Both piles now render via the shared <CardPile>
-            component — real 72x108 face-down cards with a depth-stack
-            effect, rather than the old decorative icon boxes. See
-            CardPile.tsx / Board.module.css's .card-pile block. */}
+        {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row] */}
         <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--ai'])}>
-          <CardPile
+          <StackIcon
             count={aiStackCount}
             label="Opponent"
-            variant="stack"
-            showLabel={false}
             elRef={(el) => registerRef?.('stack-ai', el)}
             onClick={handleAiStackClick}
             clickable={devMode}
-            title="Inspect opponent stack"
           />
-          <CardPile
+          <DiscardPile
             count={aiDiscardCount}
-            label="Discard"
-            variant="discard"
             elRef={(el) => registerRef?.('discard-ai', el)}
           />
         </div>
@@ -461,15 +548,29 @@ export function Board({
                   revealStep,
                   !!aiSlots[key].card,
                   !devMode,
-                  cascadePending,
-                  cascadeLaneResolved,
+                  isDragonRound,
                 );
                 const aiSlot = aiSlots[key];
+
+                // [Win-First Display Override] While this lane is
+                // cascade-pending and not yet individually resolved (and
+                // we're not already at the final 'done' catch-all), show
+                // the provisional "Win" label instead of aiSlot's true
+                // final state (which may already read 'cascaded' — the
+                // reducer computes final state up front, see
+                // useGameState.ts's Cascade Relabeling sub-block). This is
+                // purely a display swap — combat/survivor logic is
+                // entirely unaffected, it only changes what badge renders.
+                const showFinalCascadeLabel = cascadeLaneResolved || revealStep === 'done';
+                const displayAiSlot = cascadePending && !showFinalCascadeLabel
+                  ? { ...aiSlot, state: 'won' as const }
+                  : aiSlot;
+
                 const aiClickable = aiEditable && (aiSlot.card !== null || selectedAiCardId !== null);
                 return (
                   <Slot
                     key={key}
-                    slot={aiSlot}
+                    slot={displayAiSlot}
                     owner="ai"
                     visuallyFaceDown={visuallyFaceDown}
                     showOutcome={showOutcome}
@@ -501,14 +602,21 @@ export function Board({
                   revealStep,
                   !!slot.card,
                   false,
-                  cascadePending,
-                  cascadeLaneResolved,
+                  isDragonRound,
                 );
+
+                // [Win-First Display Override] Same swap as the AI loop
+                // above, mirrored for the player's own slots.
+                const showFinalCascadeLabel = cascadeLaneResolved || revealStep === 'done';
+                const displaySlot = cascadePending && !showFinalCascadeLabel
+                  ? { ...slot, state: 'won' as const }
+                  : slot;
+
                 const clickable = placementActive && (slot.card !== null || selectedCardId !== null);
                 return (
                   <Slot
                     key={key}
-                    slot={slot}
+                    slot={displaySlot}
                     owner="player"
                     visuallyFaceDown={visuallyFaceDown}
                     showOutcome={showOutcome}
@@ -539,29 +647,26 @@ export function Board({
         </div>
 
         {/* [SUB-BLOCK: Player Discard — right edge, floats toward player's row]
-            Stack pile + Shuffle button moved out to PlayerStackControls.tsx,
+            Stack icon + Shuffle button moved out to PlayerStackControls.tsx,
             rendered next to <Hand> in App.tsx — see the [Layout] note on
             BoardProps. Discard stays here, unchanged.
             [Layout — Battlefield Column Balance Fix] A hidden clone of the
-            AI's real card pile (same "Opponent" label, rendered at full
-            depth-stack count so its footprint matches the AI column's
-            widest/tallest possible state) is added above the Discard pile
-            here — see Board.module.css's .stack-col-wrap__ghost doc
-            comment for why: since the player's real stack pile lives
-            elsewhere now, this column would otherwise only ever hold the
-            Discard pile, leaving .battlefield-row's two side columns
-            slightly mismatched in footprint even though the row centers
-            via justify-content. visibility:hidden keeps it fully invisible
-            and non-interactive — it exists purely to occupy the same
-            space. */}
+            AI's real StackIcon (same "Opponent" label, so its computed
+            width matches the AI column's widest content exactly) is added
+            above the Discard pile here — see Board.module.css's
+            .stack-col-wrap__ghost doc comment for why: since the player's
+            real stack icon lives elsewhere now, this column would
+            otherwise only ever hold the narrower Discard pile, leaving
+            .battlefield-row's two side columns slightly mismatched in
+            footprint even though the row centers via justify-content.
+            visibility:hidden keeps it fully invisible and non-interactive
+            — it exists purely to occupy the same space. */}
         <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
           <div className={styles['stack-col-wrap__ghost']} aria-hidden="true">
-            <CardPile count={3} label="Opponent" variant="stack" showLabel={false} />
+            <StackIcon count={0} label="Opponent" />
           </div>
-          <CardPile
+          <DiscardPile
             count={playerDiscardCount}
-            label="Discard"
-            variant="discard"
             elRef={(el) => registerRef?.('discard-player', el)}
           />
         </div>
@@ -570,7 +675,7 @@ export function Board({
 
       {/* [SUB-BLOCK: Dev Test Mode — Phase 1: Stack Inspector panel / Phase 3: editing]
           AI-only now — the player's own inspector lives in
-          PlayerStackControls.tsx alongside the moved stack pile. */}
+          PlayerStackControls.tsx alongside the moved stack icon. */}
       {devMode && aiInspectorOpen && (
         <StackInspector
           owner="ai"
