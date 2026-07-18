@@ -41,8 +41,8 @@
    instead of a solid box — reads as a slot recess while still letting the
    wood grain show through underneath. No border/dashes. */
 .slot__placeholder {
-  width: 62px;
-  height: 86px;
+  width: 75px;
+  height: 112px;
   border-radius: 8px;
   background: rgba(45, 45, 50, 0.5);
   display: flex;
