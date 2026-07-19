@@ -4,14 +4,23 @@
    applied via background-size: cover so it fills the container at any
    viewport size without stretching or repeating. A dark linear-gradient
    is layered on top of the image in the SAME background-image
-   declaration (rather than a separate overlay element) so the existing
-   light title/button text stays legible over busy parts of the art. */
+   declaration (rather than a separate overlay element) so light
+   title/button text stays legible over busy parts of the art.
+
+   [BLOCK: Layout — Title Pinned Higher]
+   Was a single centered flex column (title + subtitle + buttons all
+   riding the same vertical midpoint) — per design direction, the title
+   now sits near the TOP of the screen instead, with the interactive
+   content (buttons / sub-view panels) centered in the space left below
+   it. Achieved by splitting into two children — .main-menu__header
+   (auto-height, sits at the top via this container's own
+   justify-content) and .main-menu__content (flex: 1, centers itself
+   within whatever space remains) — rather than moving the title with a
+   fixed pixel offset, so this stays correct across viewport heights. */
 .main-menu {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
   height: 100%;
   width: 100%;
   text-align: center;
@@ -19,6 +28,19 @@
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
+  box-sizing: border-box;
+  padding: 48px 16px 40px;
+}
+
+/* [BLOCK: Header — Title + per-view subtitle]
+   flex-shrink: 0 so it never gets compressed by the content area below
+   it; its own height is exactly its content's height, which is what
+   pins it near the top rather than the old full-height centering. */
+.main-menu__header {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .main-menu__title {
@@ -29,16 +51,38 @@
   letter-spacing: -0.5px;
 }
 
+/* [BLOCK: Subtitle — doubles as the active sub-view's heading]
+   Text itself is swapped by MainMenu.tsx per view ("Choose an option" /
+   "Choose your opponent" / "Settings" / "How to Play") — this class only
+   supplies the consistent visual treatment across all four. */
 .main-menu__subtitle {
   font-size: 14px;
-  color: #777;
-  margin: 0 0 28px;
+  color: #999;
+  margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
 
+/* [BLOCK: Content — vertically centers whichever view is active]
+   flex: 1 claims all space left under the header; centering here (rather
+   than on .main-menu itself) is what keeps the title pinned near the top
+   independent of how tall any given sub-view's content is. */
+.main-menu__content {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+/* [BLOCK: Root/Play button row] */
 .main-menu__options {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 16px;
 }
 
@@ -61,7 +105,7 @@
 
 .main-menu__btn:hover:not(:disabled) {
   border-color: #f0c040;
-  background: rgba(240,192,64,0.06);
+  background: rgba(240, 192, 64, 0.06);
   transform: translateY(-2px);
 }
 
@@ -71,9 +115,27 @@
   cursor: not-allowed;
 }
 
+/* [BLOCK: Per-button accent hovers]
+   Play/Random share the default gold hover above. Settings and How to
+   Play get their own accent so the three root options read as distinct
+   at a glance, not just three identical boxes — blue for Settings
+   (matching the existing Dev Test accent elsewhere in the app), green
+   for How to Play (matching the board's "won"/success color), keeping
+   both within the app's existing palette rather than introducing new
+   colors. */
+.main-menu__btn--settings:hover:not(:disabled) {
+  border-color: #52b0e0;
+  background: rgba(82, 176, 224, 0.06);
+}
+
+.main-menu__btn--howto:hover:not(:disabled) {
+  border-color: #52c87a;
+  background: rgba(82, 200, 122, 0.06);
+}
+
 .main-menu__btn--dev:hover:not(:disabled) {
   border-color: #52b0e0;
-  background: rgba(82,176,224,0.06);
+  background: rgba(82, 176, 224, 0.06);
 }
 
 .main-menu__btn-sub {
@@ -82,4 +144,134 @@
   color: #666;
   text-transform: none;
   letter-spacing: 0;
+}
+
+/* [BLOCK: Back link]
+   Plain text-style control (mirrors HUD.module.css's
+   .hud-sidebar__menu-link treatment) rather than a full bordered button —
+   secondary action, shouldn't visually compete with the primary
+   Play/Settings/How to Play buttons or the mode-select buttons above it. */
+.main-menu__back {
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: #888;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.main-menu__back:hover {
+  color: #f0c040;
+}
+
+/* [BLOCK: Panel — shared frame for Settings / How to Play]
+   A single dark, bordered card centers both sub-views' content instead
+   of leaving form controls/text floating directly on the busy menu
+   artwork — same dark/border treatment already used for
+   StackInspector.module.css's panel, reused here for visual consistency
+   across the app's "floating panel" surfaces. min()'d max-height keeps
+   How to Play's longer content from ever forcing the fixed-height
+   #root/.app-shell to overflow, regardless of viewport size. */
+.main-menu__panel {
+  width: min(420px, 90vw);
+  max-height: min(420px, 55vh);
+  display: flex;
+  flex-direction: column;
+  background: rgba(13, 13, 26, 0.92);
+  border: 1px solid #333;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+  padding: 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-align: left;
+}
+
+/* [BLOCK: Settings — Volume Row] */
+.main-menu__settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.main-menu__settings-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.main-menu__settings-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ddd;
+}
+
+/* [BLOCK: Coming Soon badge]
+   Same small-chip treatment as RoundHistory.module.css's cascade tag —
+   reused here rather than inventing a new chip style, so "temporary/
+   unavailable" reads consistently anywhere it shows up in the app. */
+.main-menu__coming-soon {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #52b0e0;
+  background: rgba(82, 176, 224, 0.12);
+  border: 1px solid rgba(82, 176, 224, 0.4);
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+/* [BLOCK: Slider — genuinely disabled, not just styled inert]
+   No audio system exists yet (see MainMenu.tsx's doc comment on
+   sfxVolume) — the disabled attribute is what actually prevents
+   interaction; this styling just makes that state visually obvious
+   (flattened track, dimmed thumb) rather than looking like a normal,
+   working control that happens to not respond. */
+.main-menu__slider {
+  width: 100%;
+  accent-color: #52b0e0;
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* [BLOCK: How to Play — scrollable rules content]
+   Same scroll pattern as RoundHistory.module.css's .round-history__panel
+   (thin custom scrollbar, own overflow scope) so long content scrolls
+   internally rather than growing the panel past its own max-height. */
+.main-menu__howto-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(240, 192, 64, 0.4) transparent;
+  padding-right: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.main-menu__howto-section h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #f0c040;
+}
+
+.main-menu__howto-section p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 150%;
+  color: #ccc;
+}
+
+.main-menu__howto-section strong {
+  color: #eee;
 }
