@@ -29,7 +29,7 @@
   background-position: center;
   background-repeat: no-repeat;
   box-sizing: border-box;
-  padding: 48px 16px 40px;
+  padding: 140px 16px 40px;
 }
 
 /* [BLOCK: Header — Title + per-view subtitle]
@@ -40,13 +40,14 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 14px;
 }
 
 .main-menu__title {
-  font-size: 40px;
+  font-size: 45px;
   font-weight: 700;
-  color: #eee;
+  color: #f3b408;
+  text-shadow: 0 0 4px rgba(251, 193, 5, 0.766);
   margin: 0;
   letter-spacing: -0.5px;
 }
@@ -56,8 +57,10 @@
    "Choose your opponent" / "Settings" / "How to Play") — this class only
    supplies the consistent visual treatment across all four. */
 .main-menu__subtitle {
-  font-size: 14px;
-  color: #999;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ef0808;
+  text-shadow: 0 0 2px rgba(116, 20, 9, 0.5);
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -74,7 +77,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  margin-top: 40px;
   gap: 20px;
 }
 
