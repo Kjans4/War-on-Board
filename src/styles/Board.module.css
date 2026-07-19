@@ -42,7 +42,7 @@
    panels. Owner-tinted colors (previously #6a9 player / #a66 AI) are
    dropped in favor of the single shared carved dark-brown used
    everywhere in this pass — see the color/shadow note on
-   .stack-col__count below for why the highlight shadow here is brighter
+   .card-pile__count below for why the highlight shadow here is brighter
    than the sidebar's equivalent. */
 .battlefield__row-label {
   font-family: var(--heading);
@@ -122,105 +122,29 @@ span.battlefield__divider-label {
 }
 
 /* [BLOCK: Layout — Battlefield Column Balance Fix]
-   Wraps an invisible clone of the AI's real StackIcon, rendered on the
+   Wraps an invisible clone of the AI's real stack pile, rendered on the
    PLAYER's side of .battlefield-row (see Board.tsx) — purely occupies the
-   same footprint the AI's visible stack icon takes up on the opposite
-   side. The player's own stack icon was relocated out of Board entirely
+   same footprint the AI's visible stack pile takes up on the opposite
+   side. The player's own stack pile was relocated out of Board entirely
    in an earlier layout pass (it now lives next to Hand — see
    PlayerStackControls in App.tsx), which left this column holding only
    the (narrower, shorter) Discard pile — a real, if usually small,
    width/height mismatch between the two side columns of a row that's
    otherwise centered via `justify-content: center`. This spacer restores
    an equal footprint on both sides without making anything actually
-   visible or interactive. */
+   visible or interactive.
+   [Stack Pile Parity Fix] The ghost's real content changed from a cloned
+   <StackIcon> to a cloned <CardPile> (see Board.tsx) — CardPile's own
+   .card-pile__stack box below is a FIXED 78x114 regardless of count, so
+   the ghost stays footprint-accurate no matter what the real AI pile's
+   card count is at any given moment. */
 .stack-col-wrap__ghost {
   visibility: hidden;
   pointer-events: none;
 }
 
-/* Stack columns */
-.stack-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
 .stack-col-wrap--ai     { align-self: flex-start; margin-top: 4px; }
 .stack-col-wrap--player { align-self: flex-end;   margin-bottom: 4px; }
-
-.stack-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-/* [BLOCK: Carved Wood Typography — Board Pass]
-   Stack count is the biggest, most-glanced-at number on the board (how
-   many cards are left) — given the largest size in this pass (20px ->
-   28px) and switched to Cinzel, same carved dark-brown/shadow recipe as
-   every other board label so the whole board shares one voice. This
-   label sits directly over the dark table background (no light wood
-   surface behind it like the sidebar's counter has), so a literal
-   #150d0a fill would nearly disappear on its own — the brighter warm
-   bottom-highlight shadow (0.3 opacity here vs the sidebar's 0.18) is
-   what keeps the digit's shape legible: the fill reads as a dark carved
-   groove, the highlight is the light catching its lower edge.
-
-   [HARDENED — Missing Deck / White Text Fix] Same specificity hardening
-   as .battlefield__divider-label above — the count and label spans
-   (below) were rendering in the inherited body color instead of this
-   carved treatment. `!important` added to color/text-shadow only. */
-.stack-col__count {
-  font-family: var(--heading);
-  font-size: 28px;
-  font-weight: 700;
-  color: #150d0a !important;
-  text-shadow:
-    0 -1px 1px rgba(0, 0, 0, 0.6),
-    0 1px 0 rgba(255, 232, 196, 0.3) !important;
-  font-variant-numeric: tabular-nums;
-}
-
-/* [HARDENED — Missing Deck Fix]
-   This is the actual visual "card back" icon under each stack count —
-   the block that had disappeared entirely in the reported screenshot.
-   Nothing here changed in substance (same gradient/border/shadow as
-   before); width/height/background/border are repeated with
-   `!important` so an external rule can't collapse this to a 0-size or
-   background-less box the way it was observed doing. If this still
-   doesn't restore the icon, the class isn't resolving at all (a CSS
-   Modules build/import issue) rather than a specificity conflict, and
-   we'll need to look at the actual build output next. */
-.stack-col__icon {
-  width: 46px !important;
-  height: 64px !important;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #2a2a4a, #1a1a2e) !important;
-  border: 2px solid #444 !important;
-  box-shadow: 2px 2px 0 #161622, 4px 4px 0 #111;
-  display: block;
-}
-
-/* [BLOCK: Carved Wood Typography — Board Pass]
-   Smallest tier — stack captions ("Opponent"/"You" under the deck icon).
-   Same carved recipe, sized just below the divider label since these are
-   the quietest text on the board.
-
-   [HARDENED — Missing Deck / White Text Fix] Same treatment as
-   .stack-col__count above. */
-.stack-col__label {
-  font-family: var(--heading);
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #150d0a !important;
-  text-shadow:
-    0 -1px 1px rgba(0, 0, 0, 0.6),
-    0 1px 0 rgba(255, 232, 196, 0.3) !important;
-}
 
 /* [BLOCK: Shuffle Button — Carved Stone, scaled down]
    Same stone family as the Play/Skip button (HUD.module.css) — mottled
@@ -231,7 +155,15 @@ span.battlefield__divider-label {
    Deliberately excluded from the Carved Wood typography pass, same
    reasoning as HUD.module.css's Play/Skip button — this is a lit,
    actionable game control, not board body copy, so its own glow-based
-   text treatment stays as-is. */
+   text treatment stays as-is.
+   [Stack Pile Parity Fix] This is the one .stack-col__* class that
+   SURVIVES the cleanup below — it's still actively used by
+   PlayerStackControls.tsx, unlike .stack-col/.stack-col__count/
+   .stack-col__icon/.stack-col__label, which were only ever used by the
+   old <StackIcon> component. Now that Board.tsx's opponent pile and the
+   balance ghost both render through <CardPile> instead (see Board.tsx),
+   <StackIcon> is gone entirely, and those four rules had no remaining
+   consumer — removed rather than left as dead CSS. */
 .stack-col__shuffle {
   padding: 6px 14px;
   border-radius: 8px;
@@ -290,7 +222,7 @@ span.battlefield__divider-label {
    live/active stack count.
 
    [HARDENED — Missing Deck / White Text Fix] Same treatment as
-   .stack-col__count above. */
+   .card-pile__count above. */
 .discard-col__count {
   font-family: var(--heading);
   font-size: 22px;
@@ -313,10 +245,10 @@ span.battlefield__divider-label {
 }
 
 /* [BLOCK: Carved Wood Typography — Board Pass]
-   Discard caption — same tier/recipe as .stack-col__label above.
+   Discard caption — same tier/recipe as .card-pile__label above.
 
    [HARDENED — Missing Deck / White Text Fix] Same treatment as
-   .stack-col__label above. */
+   .card-pile__label above. */
 .discard-col__label {
   font-family: var(--heading);
   font-size: 12px;
@@ -366,7 +298,14 @@ span.battlefield__divider-label {
   text-transform: uppercase;
   white-space: nowrap;
 }
-/* [BLOCK: Card Pile — Real-Card Stack/Discard, shared by CardPile.tsx] */
+
+/* [BLOCK: Card Pile — Real-Card Stack/Discard, shared by CardPile.tsx]
+   [Stack Pile Parity Fix] This block is now the SOLE source of truth for
+   both sides' stack piles — PlayerStackControls.tsx already rendered
+   through <CardPile>, and Board.tsx's opponent pile + balance ghost were
+   just switched over to it too (see Board.tsx). Nothing below changed in
+   substance from before this pass; it was already correct, the gap was
+   only that Board.tsx wasn't using it for the opponent side yet. */
 .card-pile {
   display: flex;
   flex-direction: column;

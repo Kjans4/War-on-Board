@@ -7,6 +7,7 @@ import type { BoardSlots, SlotKey, Card as CardType, Owner, RPSType, CascadeResu
 import { SLOT_KEYS } from '../types/game';
 import { Slot } from './Slot';
 import { Card } from './Card';
+import { CardPile } from './CardPile';
 import { StackInspector } from './StackInspector';
 import { CardTypePicker, CardEditButton } from './CardTypePicker';
 import { getStackTypeCounts } from '../logic/deck';
@@ -303,7 +304,7 @@ interface BoardProps {
   // hand row.
   devMode?: boolean;
   // [Dev Test Mode — Phase 1: Stack Inspector / Phase 2: Hand Swap]
-  // The AI's own stack contents — used by devMode's AI stack-icon click
+  // The AI's own stack contents — used by devMode's AI stack-pile click
   // (read-only inspector) AND as the source of per-type remaining counts
   // for the AI hand swap-picker (getStackTypeCounts(aiStack)). The
   // player's stack no longer passes through Board at all (see above) — the
@@ -342,46 +343,13 @@ function fanStyle(index: number, total: number): CSSProperties {
   };
 }
 
-// [BLOCK: Stack Icon]
-// [Dev Test Mode — Phase 1] onClick/clickable let App/Board open the Stack
-// Inspector panel — only ever wired to be clickable when devMode is on
-// (see Board's render below). Normal play never sets these, so the icon
-// stays purely decorative/count-display outside dev mode, unchanged from
-// before this phase.
-function StackIcon({
-  count,
-  label,
-  elRef,
-  onClick,
-  clickable = false,
-}: {
-  count: number;
-  label: string;
-  elRef?: (el: HTMLDivElement | null) => void;
-  onClick?: () => void;
-  clickable?: boolean;
-}) {
-  return (
-    <div
-      className={clsx(styles['stack-col'], clickable && styles['stack-col--clickable'])}
-      ref={elRef}
-      onClick={clickable ? onClick : undefined}
-      role={clickable ? 'button' : undefined}
-      tabIndex={clickable ? 0 : undefined}
-      onKeyDown={clickable ? (e) => e.key === 'Enter' && onClick?.() : undefined}
-      title={clickable ? `Inspect ${label.toLowerCase()} stack` : undefined}
-    >
-      <span className={styles['stack-col__count']}>{count}</span>
-      <div className={styles['stack-col__icon']} aria-hidden="true" />
-      <span className={styles['stack-col__label']}>{label}</span>
-    </div>
-  );
-}
-
 // [BLOCK: Discard Pile]
 // Visual home for cards that didn't survive the round — purely a display
 // of GameState.playerDiscard/aiDiscard's length, plus a landing point for
 // the return-flight animation (see App.tsx's buildReturnFlights).
+// [Not part of this session's fix — see war-on-board-pending-changes.txt
+// item #3, which is tracked separately from the stack-pile parity fix
+// below. Left untouched here so this pass stays scoped to the stack pile.]
 function DiscardPile({
   count,
   elRef,
@@ -474,14 +442,30 @@ export function Board({
     <>
       <div className={styles['battlefield-row']}>
 
-        {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row] */}
+        {/* [SUB-BLOCK: Opponent Stack + Discard — left edge, floats toward opponent's row]
+            [Stack Pile Parity Fix] Opponent's stack pile now renders through
+            the same <CardPile> component the player's own stack uses (see
+            PlayerStackControls.tsx) instead of the old, visually distinct
+            <StackIcon> (a 46x64 decorative box). This gets the opponent
+            side the real 72x108 face-down Card, the depth-layer "3D stack"
+            ghosting at 2+ cards, and the "?" back symbol — all identical to
+            the player's pile, rather than a smaller lookalike. showLabel is
+            left at its default (true) here, unlike PlayerStackControls'
+            showLabel={false} — the player's own pile omits its caption
+            because the "You" row label already sits directly below the
+            battlefield row, but the opponent's equivalent "Opponent" row
+            label is one row up, not immediately adjacent to this pile, so
+            keeping this pile's own "Opponent" caption preserves the same
+            at-a-glance labeling the old StackIcon provided. */}
         <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--ai'])}>
-          <StackIcon
+          <CardPile
             count={aiStackCount}
             label="Opponent"
+            variant="stack"
             elRef={(el) => registerRef?.('stack-ai', el)}
             onClick={handleAiStackClick}
             clickable={devMode}
+            title="Inspect opponent stack"
           />
           <DiscardPile
             count={aiDiscardCount}
@@ -650,20 +634,24 @@ export function Board({
             Stack icon + Shuffle button moved out to PlayerStackControls.tsx,
             rendered next to <Hand> in App.tsx — see the [Layout] note on
             BoardProps. Discard stays here, unchanged.
-            [Layout — Battlefield Column Balance Fix] A hidden clone of the
-            AI's real StackIcon (same "Opponent" label, so its computed
-            width matches the AI column's widest content exactly) is added
-            above the Discard pile here — see Board.module.css's
-            .stack-col-wrap__ghost doc comment for why: since the player's
-            real stack icon lives elsewhere now, this column would
-            otherwise only ever hold the narrower Discard pile, leaving
-            .battlefield-row's two side columns slightly mismatched in
-            footprint even though the row centers via justify-content.
-            visibility:hidden keeps it fully invisible and non-interactive
-            — it exists purely to occupy the same space. */}
+            [Layout — Battlefield Column Balance Fix]
+            [Stack Pile Parity Fix] The hidden balance clone here now uses
+            <CardPile> (count=0, variant="stack", label="Opponent") instead
+            of the old <StackIcon> — it must mirror whatever component the
+            AI's REAL stack pile renders above, or the two side columns of
+            .battlefield-row drift out of alignment again (see
+            Board.module.css's .stack-col-wrap__ghost doc comment for why
+            this ghost exists at all). CardPile's own .card-pile__stack box
+            is a FIXED 78x114 regardless of count/empty-state, so this
+            count=0 clone's footprint exactly matches the real AI pile's
+            footprint at any actual card count — no drift risk from the
+            ghost and the real pile disagreeing on size as the game
+            progresses. visibility:hidden (via .stack-col-wrap__ghost) keeps
+            it fully invisible and non-interactive — it exists purely to
+            occupy the same space. */}
         <div className={clsx(styles['stack-col-wrap'], styles['stack-col-wrap--player'])}>
           <div className={styles['stack-col-wrap__ghost']} aria-hidden="true">
-            <StackIcon count={0} label="Opponent" />
+            <CardPile count={0} label="Opponent" variant="stack" />
           </div>
           <DiscardPile
             count={playerDiscardCount}
