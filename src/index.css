@@ -81,7 +81,18 @@
   sitting flush against the browser's own edges reads as a stray line
   rather than a frame, so removing it (not just letting it stick out) is
   the correct pairing with this change, not a separate decision.
-*/
+
+  [BLOCK: Game-Screen Side Bleed — lives in App.module.css, not here]
+  An earlier revision put a single shared menu.jpg background directly on
+  #root so it would show in the margins outside App.module.css's
+  content-hugging .app-shell--table frame. That's been superseded by two
+  SEPARATE fixed-position panels (.app-shell-side--left/--right, rendered
+  by App.tsx, styled in App.module.css) — a single shared background had
+  no way to guarantee both edges landed on an actual person in the art at
+  once, since it's one crop split down the middle rather than two
+  independently-aimed ones. #root itself stays a plain layout container
+  again; see App.module.css's doc comment on those two classes for the
+  actual side-art logic. */
 #root {
   width: 100%;
   margin: 0 auto;

@@ -781,7 +781,9 @@ function App() {
   // [BLOCK: Render — Main Menu]
   // [Background Art] Uses plain .app-shell here — no table background —
   // since the menu's own art lives on MainMenu.module.css's .main-menu
-  // instead (see that file's doc comment).
+  // instead (see that file's doc comment). No side-bleed panels here
+  // either — MainMenu's own background already goes full-bleed edge to
+  // edge, so there's nothing outside it for a side panel to fill.
   if (!started) {
     return (
       <div className={styles['app-shell']}>
@@ -798,8 +800,24 @@ function App() {
   // app-shell class ONLY here — the wood-grain table background is meant
   // to sit behind the whole game screen (sidebar included), never behind
   // the Main Menu above.
+  //
+  // [Side-Bleed Art] Two fixed, negative-z-index panels rendered as
+  // siblings of app-shell (not children) — see App.module.css's
+  // .app-shell-side doc comment for why fixed + z-index: -1 is what lets
+  // them sit behind the (perfectly normal, static-position) game frame
+  // without any manual width/offset math: the frame's own opaque
+  // background naturally covers whatever these panels render underneath
+  // it, so only the true left/right margins ever show. Reuses menu.jpg —
+  // the same art MainMenu.module.css shows full-bleed on the Main Menu —
+  // but each panel gets its OWN background-position, independently tuned
+  // to frame a person rather than whatever slice the shared single-image
+  // approach happened to land on (see the CSS file's comment for the
+  // starting values and why they'll likely need visual fine-tuning).
   return (
     <>
+      <div className={styles['app-shell-side--left']} aria-hidden="true" />
+      <div className={styles['app-shell-side--right']} aria-hidden="true" />
+
       <div className={clsx(styles['app-shell'], styles['app-shell--table'])}>
 
         {/* [SUB-BLOCK: Left Sidebar — unified wood-panel frame]

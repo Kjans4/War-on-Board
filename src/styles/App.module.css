@@ -23,27 +23,87 @@
    only on the Game render, not the Main Menu render) — .app-shell alone
    stays a plain layout container with no background of its own.
 
-   [BLOCK: Boxed Game Frame — game-screen only]
-   index.css's #root used to cap the WHOLE app (menu included) at 1126px
-   with a border-inline frame — that was removed so the Main Menu's
-   menu.jpg could go full-bleed edge-to-edge. The boxed, framed look reads
-   better for the actual game screen though (readability + a sense of
-   "board" containment), so it's restored here instead, scoped to this
-   modifier class only — .app-shell--table is only ever added on top of
-   .app-shell during the Game render (never Main Menu, see App.tsx), so
-   Main Menu stays full-bleed via plain .app-shell.
-   Purely a WIDTH change (max-width + centering margin + a vertical
-   border) — .app-shell's own `height: 100svh` and .left-sidebar's
-   height constraints fix the height/cross-axis concerns, so the sidebar's 
-   header/round-history/footer flex distribution is unaffected. */
+   [BLOCK: Boxed Game Frame — Content-Hugging Width]
+   Previously a flat `max-width: 1126px` — comfortably wider than the
+   sidebar + board + spacer actually need, which left visible slack
+   (empty wood-textured space) inside the frame on either side of the
+   board itself. Per design direction, the frame should hug its own
+   content tightly instead of carrying that extra padding, so the newly
+   exposed area OUTSIDE the frame (see .app-shell-side--left/--right
+   below) can show more of the reused menu.jpg side art.
+   `width: fit-content` replaces the fixed max-width — the row's own
+   three children (left-sidebar at a fixed 228px footprint, app-center
+   capped via .app-board-column's own 700px ceiling — see below — and the
+   228px spacer mirroring the sidebar) determine the frame's total width
+   directly, so there's no separate total-width number to keep in sync by
+   hand if either the sidebar or the board's own sizing ever changes.
+   `max-width: 100%` is a pure safety net for viewports narrower than the
+   hugged width — without it, a very small screen could force this row to
+   overflow past #root's own bounds (which has `overflow: hidden`,
+   meaning content would just get clipped rather than reflow).
+   Purely a WIDTH change — .app-shell's own `height: 100svh` and
+   .left-sidebar's height constraints still fix the height/cross-axis
+   concerns, so the sidebar's header/round-history/footer flex
+   distribution is unaffected. */
 .app-shell--table {
-  max-width: 1126px;
+  width: fit-content;
+  max-width: 100%;
   margin: 0 auto;
   border-inline: 1px solid var(--border, #222);
   background-image: linear-gradient(rgba(6, 6, 10, 0.55), rgba(6, 6, 10, 0.55)), url('/table.jpg');
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
+}
+
+/* [BLOCK: Side-Bleed Art Panels — Left / Right]
+   Rendered by App.tsx as fixed-position SIBLINGS of .app-shell (not
+   children/descendants of it) — `position: fixed` + `z-index: -1` is
+   what lets them sit behind the game frame reliably: negative z-index
+   content paints before (i.e. below) any normal in-flow static-position
+   element in the same stacking context, and .app-shell itself has no
+   position/z-index of its own, so it's exactly that kind of normal
+   static content. The frame's own opaque wood background then naturally
+   covers whatever these panels render underneath its center — only the
+   true left/right margins outside the (now content-hugging, see
+   .app-shell--table above) frame ever actually show.
+
+   Each side gets its OWN background-position rather than sharing one
+   image placement — the single-shared-background approach (previously on
+   #root, see index.css's prior revision) had no way to guarantee both
+   edges landed on a person at once; a poster-composition image usually
+   has its subjects somewhat IN from the true edges, not sitting exactly
+   at 0%/100%, so the values below are a first pass (roughly a fifth to a
+   quarter in from each edge, vertically centered) meant to bias toward
+   wherever menu.jpg's own left-side and right-side figures actually
+   stand — expect to nudge these percentages after seeing it rendered,
+   since there's no way to verify the exact source composition from CSS
+   alone. `background-size: cover` (not zoomed further) per "wider crop"
+   direction — show more of the full figure/scene rather than a tight
+   zoom on just a face/torso.
+   `pointer-events: none` + `aria-hidden` (set in App.tsx) — purely
+   decorative, never interactive or announced. */
+.app-shell-side--left,
+.app-shell-side--right {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 50vw;
+  z-index: -1;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(8, 8, 14, 0.32), rgba(8, 8, 14, 0.32)), url('/menu.jpg');
+  background-repeat: no-repeat;
+  background-size: 120% cover;
+}
+
+.app-shell-side--left {
+  left: 0;
+  background-position: 27% center;
+}
+
+.app-shell-side--right {
+  right: 0;
+  background-position: 68% center;
 }
 
 /* [BLOCK: Left Sidebar — Unified Wood-Panel Frame]
@@ -116,34 +176,35 @@
 }
 
 /* [BLOCK: Right-Edge Spacer — Global Centering Fix]
-   .app-shell lays out as [left-sidebar][app-center], where app-center is
-   flex:1 and centers ITS OWN contents within whatever space is left over.
-   With nothing balancing the sidebar's ~228px footprint (200px width +
-   14px margin each side, see .left-sidebar) on the right, that leftover
-   space's midpoint sits well right of the page's true center — the board
-   was centering correctly relative to app-center, just not relative to
-   the actual viewport, which read as the whole layout leaning right.
-   This spacer mirrors the sidebar's exact footprint on the opposite edge
-   (see App.tsx, rendered as a plain empty div after app-center) so
-   app-center's remaining space is symmetric and its internal centering
-   lines up with the page's true center. Purely structural — no visual
+   .app-shell lays out as [left-sidebar][app-center], where app-center now
+   hugs its own board content instead of stretching to fill leftover
+   space (see .app-center's doc comment below). Without a matching
+   footprint on the opposite edge, the frame's own content would sit
+   left-weighted inside its (now content-hugging) box — this spacer
+   mirrors the sidebar's exact footprint on the right edge purely so the
+   row's three children stay symmetric and the board centers within the
+   frame the same way it always has. Purely structural — no visual
    styling, never rendered with content. */
 .app-shell__spacer {
   width: 228px;
   flex-shrink: 0;
 }
 
-/* [BLOCK: Center Column — Layout Fix]
-   Was `justify-content: flex-start` with a flat 36px top padding — on
-   shorter viewports this pinned the whole Board+Hand block to the top and
-   left whatever came after (the Hand row, deck, Shuffle button) crammed
-   against the bottom edge with almost no clearance. Switched to
-   `justify-content: center` so the entire block sits vertically balanced
-   within whatever space app-center actually has, with `min-height: 0`
-   added so this flex child can compute that space correctly against
-   app-shell's fixed height instead of forcing overflow. */
+/* [BLOCK: Center Column — Content-Hugging]
+   Was `flex: 1` — which stretched this column to fill whatever space was
+   left over inside the old flat 1126px frame, leaving slack around the
+   board that the frame's own width no longer carries (see
+   .app-shell--table's doc comment above). Switched to `flex: 0 1 auto`
+   (don't grow, may still shrink on a tight viewport) with `width:
+   fit-content`, so this column's rendered width is driven entirely by
+   its own content — namely .app-board-column below, which carries the
+   actual 700px cap. `justify-content: center` still centers the board
+   vertically within whatever height app-shell provides; horizontal
+   centering is now moot at this level (the box equals its content's
+   width) but harmless to leave in place. */
 .app-center {
-  flex: 1;
+  flex: 0 1 auto;
+  width: fit-content;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -155,29 +216,34 @@
   box-sizing: border-box;
 }
 
-/* [BLOCK: Board + Hand Column — Width-Matching Wrapper]
+/* [BLOCK: Board + Hand Column — Width-Matching Wrapper + Board Cap]
    Groups Board and the Hand/Stack row into a single flex column with the
    default `align-items: stretch` — since this wrapper itself has no
-   explicit width (auto-sized against app-center's centered layout), the
-   browser sizes it to fit its WIDEST child (Board, which is naturally
-   wider than Hand+PlayerStackControls combined), and `stretch` then
-   forces every other child — namely .app-hand-row — to that same width.
-   This is what lets .app-hand-row's own symmetric-spacer trick (below)
-   work without hardcoding any pixel widths: the row's width is always
-   guaranteed to equal Board's actual rendered width, whatever that is.
+   explicit width beyond the cap below, the browser sizes it to fit its
+   WIDEST child (Board, which is naturally wider than Hand+
+   PlayerStackControls combined), and `stretch` then forces every other
+   child — namely .app-hand-row — to that same width. This is what lets
+   .app-hand-row's own symmetric-spacer trick (below) work without
+   hardcoding any pixel widths: the row's width is always guaranteed to
+   equal Board's actual rendered width, whatever that is.
 
-   [Fix — item #4b: Hand-to-"You"-Label Spacing]
-   gap tightened 20px -> 10px. This wrapper has exactly two children —
-   Board (which ends in the "You" row label) and the Hand/Stack row — so
-   this single gap value is entirely responsible for the vertical
-   distance between them. 20px read as too loose per screenshot review;
-   10px keeps Hand and the board visually connected without the fanned
-   cards touching the label beneath the battlefield slots. */
+   [BLOCK: 700px Board Cap]
+   Per design direction, the board/hand area is the one piece of this
+   layout with an explicit target size ("hugs its own content tightly,
+   ~700px") — the sidebar and spacer stay at their own fixed 228px
+   footprints outside of this number entirely (see .app-shell--table's
+   doc comment: the frame's TOTAL width is never hardcoded, it's derived
+   from sidebar + this + spacer). In normal play this cap is rarely if
+   ever actually binding — 3 slots + stack piles + a 5-card fanned hand
+   render narrower than 700px on their own — so this mostly acts as a
+   documented ceiling against future growth (e.g. a larger HAND_SIZE)
+   rather than a constraint that visibly compresses today's board. */
 .app-board-column {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 20px;
+  max-width: 700px;
 }
 
 /* [BLOCK: Hand + Stack Row — Drift-Proof Layout]
