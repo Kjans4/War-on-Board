@@ -78,12 +78,17 @@
   gap: 20px;
 }
 
-/* [BLOCK: Root/Play button row] */
+/* [BLOCK: Root/Play button stack]
+   Was a wrapped horizontal row (flex-wrap + justify-content: center) —
+   per design direction, every button group (root's Play/Settings/How to
+   Play, and Play's Random/Smart) now stacks vertically instead. Shared
+   by both since they use this same class — a single change here covers
+   every button group in the menu, not just one view. */
 .main-menu__options {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 16px;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
 .main-menu__btn {
