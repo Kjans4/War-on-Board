@@ -72,14 +72,17 @@
    mottled warm-grey gradient (a couple of soft radial patches fake rock
    graining without an image) plus a chunky inset bevel: a thick warm
    highlight along the top-left, a thick near-black shadow along the
-   bottom-right, an inner edge ring for crisp definition, and a soft outer
-   drop shadow so the whole button visually lifts off the sidebar. State
-   is communicated by the LABEL, not the stone — see --ready/--skip below,
-   which only change text color/glow, never the shape or stone tone.
-   Deliberately untouched by the Carved Wood typography pass — this
-   button's own glowing-text treatment already reads as a distinct,
-   lit-from-within game control (not sidebar body copy), and its label
-   text must stay legible/actionable rather than recede into the wood. */
+   bottom-right, an inner edge ring for crisp definition, and a soft
+   outer drop shadow so the whole button visually lifts off the sidebar.
+
+   [Engraved Match — Dormant State]
+   The dormant/disabled state (neither Ready nor Skip) now carries the
+   same carved-groove highlight as Shuffle's own resting text
+   (Board.module.css's .stack-col__shuffle) — previously flat grey with
+   no shadow at all, which looked visually inconsistent sitting right
+   next to Shuffle's engraved rest state on the same screen. Ready/Skip
+   below are UNCHANGED from the always-on-glow revert — this only affects
+   the button before either of those states is active. */
 .hud-sidebar__play {
   padding: 12px;
   border-radius: 10px;
@@ -93,10 +96,13 @@
     inset -3px -3px 4px rgba(0, 0, 0, 0.55),
     inset 0 0 0 1px rgba(20, 18, 15, 0.65),
     0 4px 10px rgba(0, 0, 0, 0.45);
-  color: #7c7669;
+  color: #3a3733;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.04em;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.5),
+    0 1px 0 rgba(255, 250, 235, 0.18);
   cursor: not-allowed;
   transition: color 0.2s ease, text-shadow 0.2s ease, transform 0.1s ease;
 }
@@ -105,7 +111,7 @@
   cursor: not-allowed;
 }
 
-/* Ready — Play, gold glow etched into the text */
+/* Ready — Play, gold glow etched into the text, always on */
 .hud-sidebar__play--ready {
   color: #f7d873;
   text-shadow:
@@ -125,7 +131,7 @@
   transform: translateY(1px);
 }
 
-/* Skip — dim red glow, distinct from Ready at a glance */
+/* Skip — dim red glow, always on, distinct from Ready at a glance */
 .hud-sidebar__play--skip {
   color: #e07a7a;
   text-shadow:

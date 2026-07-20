@@ -149,21 +149,18 @@ span.battlefield__divider-label {
 /* [BLOCK: Shuffle Button — Carved Stone, scaled down]
    Same stone family as the Play/Skip button (HUD.module.css) — mottled
    warm-grey gradient + a chunky inset bevel, just proportioned for this
-   smaller pill shape. No colored glow on this one (Shuffle has no
-   Ready/Skip-style state to signal) — enabled state gets a warm brighten
-   on hover instead, disabled just flattens/dims the stone.
-   Deliberately excluded from the Carved Wood typography pass, same
-   reasoning as HUD.module.css's Play/Skip button — this is a lit,
-   actionable game control, not board body copy, so its own glow-based
-   text treatment stays as-is.
-   [Stack Pile Parity Fix] This is the one .stack-col__* class that
-   SURVIVES the cleanup below — it's still actively used by
-   PlayerStackControls.tsx, unlike .stack-col/.stack-col__count/
-   .stack-col__icon/.stack-col__label, which were only ever used by the
-   old <StackIcon> component. Now that Board.tsx's opponent pile and the
-   balance ghost both render through <CardPile> instead (see Board.tsx),
-   <StackIcon> is gone entirely, and those four rules had no remaining
-   consumer — removed rather than left as dead CSS. */
+   smaller pill shape.
+
+   [Engraved Match — MainMenu parity]
+   Text treatment now matches MainMenu.module.css's .main-menu__stone
+   exactly: dark, carved-groove text at rest (same dark stone-grey +
+   faint highlight-below recipe used across the sidebar/main menu), with
+   a gold glow appearing ONLY on hover — unlike the Play/Skip button
+   above, Shuffle is a secondary, occasional action (not "this round's
+   primary move"), so there's no need for it to announce itself with an
+   always-on glow the way Ready/Skip do; hover-to-reveal is the right fit
+   here, same reasoning as the main menu's own buttons. Disabled state is
+   unchanged — still a flattened, non-carved grey. */
 .stack-col__shuffle {
   padding: 6px 14px;
   border-radius: 8px;
@@ -177,16 +174,21 @@ span.battlefield__divider-label {
     inset -2px -2px 3px rgba(0, 0, 0, 0.5),
     inset 0 0 0 1px rgba(20, 18, 15, 0.6),
     0 2px 6px rgba(0, 0, 0, 0.35);
-  color: #b0aa9c;
+  color: #3a3733;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow:
+    0 -1px 1px rgba(0, 0, 0, 0.5),
+    0 1px 0 rgba(255, 250, 235, 0.18);
   cursor: pointer;
-  transition: color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  transition: color 0.15s ease, text-shadow 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   white-space: nowrap;
 }
 
 .stack-col__shuffle:disabled {
   color: #5c584f;
+  text-shadow: none;
   box-shadow:
     inset 1px 1px 1px rgba(255, 250, 235, 0.1),
     inset -2px -2px 3px rgba(0, 0, 0, 0.4),
@@ -195,7 +197,11 @@ span.battlefield__divider-label {
 }
 
 .stack-col__shuffle:not(:disabled):hover {
-  color: #e8e0cf;
+  color: #ffe38f;
+  text-shadow:
+    0 0 8px rgba(240, 192, 64, 1),
+    0 0 20px rgba(240, 192, 64, 0.7),
+    0 1px 0 rgba(0, 0, 0, 0.4);
   box-shadow:
     inset 1px 1px 1px rgba(255, 250, 235, 0.4),
     inset -2px -2px 3px rgba(0, 0, 0, 0.5),

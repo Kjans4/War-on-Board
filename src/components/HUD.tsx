@@ -40,9 +40,13 @@ export function RoundCounter({ round }: RoundCounterProps) {
 
 // [BLOCK: Play Footer]
 // Button has two active states:
-//   "Play"   — lit gold, fires onConfirmPlacement (placement phase, 3 slots filled)
-//   "Skip →" — dim, fires onSkip (during reveal animation or auto-transition)
+//   "Play" — lit gold, fires onConfirmPlacement (placement phase, 3 slots filled)
+//   "Skip" — lit red, fires onSkip (during reveal animation or auto-transition)
 // Disabled/dark when neither condition is true (e.g. mid-placement < 3 cards placed)
+// [Label] The arrow that used to trail "Skip →" is dropped — the button's
+// own red glow (see HUD.module.css's .hud-sidebar__play--skip) already
+// distinguishes it from Ready's gold at a glance, so the arrow was
+// redundant decoration rather than the thing carrying the meaning.
 export function PlayFooter({
   phase,
   onConfirmPlacement,
@@ -71,7 +75,7 @@ export function PlayFooter({
         onClick={handleClick}
         disabled={!anyActive || phase === 'gameover'}
       >
-        {isSkip ? 'Skip →' : 'Play'}
+        {isSkip ? 'Skip' : 'Play'}
       </button>
       <button className={styles['hud-sidebar__menu-link']} onClick={onBackToMenu}>
         ↺ Main Menu

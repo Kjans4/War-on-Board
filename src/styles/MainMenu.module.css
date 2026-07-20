@@ -106,13 +106,15 @@
    Split out as its OWN class (rather than folded into .main-menu__btn)
    so both the primary buttons and the smaller Back control below can
    compose it without duplicating the gradient/shadow stack twice.
-   Text carries a permanent gold glow at this base level — every menu
-   button here is always actionable when rendered (unlike HUD's
-   Play/Skip, which toggles between a dormant grey state and a --ready
-   glow depending on game state), so the "ready" glow from that component
-   is simply the DEFAULT here rather than a modifier class layered on
-   top. Only :disabled (Smart, "Coming soon") drops back to a flattened,
-   non-glowing look — see .main-menu__btn--disabled below. */
+   Text is now ENGRAVED at rest — dark stone-grey with a faint carved-
+   groove highlight (same recipe family as the sidebar's carved-wood
+   labels: a dark shadow riding just above the glyph, a soft warm
+   highlight just below it, simulating light catching the lower edge of
+   a groove cut into the material) — rather than glowing gold all the
+   time. The gold glow (see :hover below) now reads as the button
+   visually "lighting up" on interaction, instead of being the resting
+   state. Only :disabled (Smart, "Coming soon") overrides this further to
+   a flatter, non-carved look — see .main-menu__btn--disabled below. */
 .main-menu__stone {
   border: none;
   border-radius: 10px;
@@ -125,13 +127,12 @@
     inset -3px -3px 4px rgba(0, 0, 0, 0.55),
     inset 0 0 0 1px rgba(20, 18, 15, 0.65),
     0 4px 10px rgba(0, 0, 0, 0.45);
-  color: #f7d873;
+  color: #3a3733;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-shadow:
-    0 0 6px rgba(240, 192, 64, 0.85),
-    0 0 14px rgba(240, 192, 64, 0.55),
-    0 1px 0 rgba(0, 0, 0, 0.4);
+    0 -1px 1px rgba(0, 0, 0, 0.5),
+    0 1px 0 rgba(255, 250, 235, 0.18);
   cursor: pointer;
   transition: color 0.2s ease, text-shadow 0.2s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
