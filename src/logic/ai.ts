@@ -1,7 +1,7 @@
 // src/logic/ai.ts
 
 import type { Card, SlotKey, AIState, RPSType, PatternHistory, CardsSeen } from '../types/game';
-import { SLOT_KEYS, CARDS_TO_PLACE, CARDS_PER_TYPE, RPS_TYPES } from '../types/game';
+import { SLOT_KEYS, CARDS_PER_TYPE, RPS_TYPES } from '../types/game';
 import { shuffle } from './deck';
 
 // [BLOCK: Random AI]
