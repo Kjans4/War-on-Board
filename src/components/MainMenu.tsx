@@ -70,31 +70,35 @@ export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
           replace[d]". */}
       <div className={styles['main-menu__content']}>
 
-        {/* [VIEW: Root] */}
+        {/* [VIEW: Root]
+            [Carved Stone Buttons] Every button below composes TWO
+            classes: .main-menu__stone (the shared background/bevel/glow
+            recipe — see MainMenu.module.css) + .main-menu__btn (sizing
+            only). Sub-captions are gone per design direction — these are
+            now single-line stone buttons, matching the Play/Skip and
+            Shuffle controls' own visual language elsewhere in the app,
+            rather than the old two-line title+caption cards. */}
         {view === 'root' && (
           <div className={styles['main-menu__options']}>
             <button
-              className={clsx(styles['main-menu__btn'], styles['main-menu__btn--play'])}
+              className={clsx(styles['main-menu__stone'], styles['main-menu__btn'])}
               onClick={() => setView('play')}
             >
               Play
-              <span className={styles['main-menu__btn-sub']}>Start a match</span>
             </button>
 
             <button
-              className={clsx(styles['main-menu__btn'], styles['main-menu__btn--settings'])}
+              className={clsx(styles['main-menu__stone'], styles['main-menu__btn'])}
               onClick={() => setView('settings')}
             >
               Settings
-              <span className={styles['main-menu__btn-sub']}>SFX volume</span>
             </button>
 
             <button
-              className={clsx(styles['main-menu__btn'], styles['main-menu__btn--howto'])}
+              className={clsx(styles['main-menu__stone'], styles['main-menu__btn'])}
               onClick={() => setView('howto')}
             >
               How to Play
-              <span className={styles['main-menu__btn-sub']}>Rules &amp; systems</span>
             </button>
 
             {/* [SUB-BLOCK: Dev Test Mode entry — see dev-test-mode-plan.md]
@@ -103,11 +107,10 @@ export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
                 internal testing — flip the flag to bring it back. */}
             {SHOW_DEV_TEST_BUTTON && (
               <button
-                className={clsx(styles['main-menu__btn'], styles['main-menu__btn--dev'])}
+                className={clsx(styles['main-menu__stone'], styles['main-menu__btn'])}
                 onClick={onSelectDevTest}
               >
                 Dev Test
-                <span className={styles['main-menu__btn-sub']}>Reveal &amp; configure AI hand</span>
               </button>
             )}
           </div>
@@ -118,28 +121,30 @@ export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
           <>
             <div className={styles['main-menu__options']}>
               <button
-                className={clsx(styles['main-menu__btn'], styles['main-menu__btn--random'])}
+                className={clsx(styles['main-menu__stone'], styles['main-menu__btn'])}
                 onClick={onSelectRandom}
               >
                 Random
-                <span className={styles['main-menu__btn-sub']}>Plays loose, no memory</span>
               </button>
 
               <button
                 className={clsx(
+                  styles['main-menu__stone'],
                   styles['main-menu__btn'],
-                  styles['main-menu__btn--smart'],
                   styles['main-menu__btn--disabled'],
                 )}
                 disabled
                 aria-disabled="true"
+                title="Coming soon"
               >
                 Smart
-                <span className={styles['main-menu__btn-sub']}>Coming soon</span>
               </button>
             </div>
 
-            <button className={styles['main-menu__back']} onClick={handleBack}>
+            <button
+              className={clsx(styles['main-menu__stone'], styles['main-menu__back'])}
+              onClick={handleBack}
+            >
               ← Back
             </button>
           </>
@@ -170,7 +175,10 @@ export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
               </div>
             </div>
 
-            <button className={styles['main-menu__back']} onClick={handleBack}>
+            <button
+              className={clsx(styles['main-menu__stone'], styles['main-menu__back'])}
+              onClick={handleBack}
+            >
               ← Back
             </button>
           </>
@@ -254,7 +262,10 @@ export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
               </div>
             </div>
 
-            <button className={styles['main-menu__back']} onClick={handleBack}>
+            <button
+              className={clsx(styles['main-menu__stone'], styles['main-menu__back'])}
+              onClick={handleBack}
+            >
               ← Back
             </button>
           </>

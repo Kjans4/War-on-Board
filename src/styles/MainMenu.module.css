@@ -29,7 +29,7 @@
   background-position: center;
   background-repeat: no-repeat;
   box-sizing: border-box;
-  padding: 140px 16px 40px;
+  padding: 140px 160px 40px;
 }
 
 /* [BLOCK: Header — Title + per-view subtitle]
@@ -95,84 +95,103 @@
   gap: 12px;
 }
 
-.main-menu__btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  width: 180px;
-  padding: 20px 16px;
-  border-radius: 12px;
-  border: 2px solid #333;
-  background: #0d0d1a;
-  color: #ddd;
-  font-size: 18px;
+/* [BLOCK: Carved Stone — shared recipe]
+   Reuses the exact stone treatment already established by
+   HUD.module.css's .hud-sidebar__play (Play/Skip) and
+   Board.module.css's .stack-col__shuffle: a mottled warm-grey gradient
+   (two soft radial patches fake rock graining without an image) plus a
+   chunky inset bevel — a warm highlight top-left, a near-black shadow
+   bottom-right, an inner edge ring for crisp definition, and a soft
+   outer drop shadow so the button visually lifts off the menu art.
+   Split out as its OWN class (rather than folded into .main-menu__btn)
+   so both the primary buttons and the smaller Back control below can
+   compose it without duplicating the gradient/shadow stack twice.
+   Text carries a permanent gold glow at this base level — per design
+   direction every menu button here is always actionable when rendered
+   (unlike HUD's Play/Skip, which toggles between a dormant grey state
+   and a --ready glow depending on game state), so the "ready" glow from
+   that component is simply the DEFAULT here rather than a modifier class
+   layered on top. Only :disabled (Smart, "Coming soon") drops back to a
+   flattened, non-glowing look — see .main-menu__btn--disabled below.
+   Replaces the previous bordered-box treatment (dark fill, thin border,
+   per-button accent-color hover) entirely — that approach is gone, not
+   just restyled. */
+.main-menu__stone {
+  border: none;
+  border-radius: 10px;
+  background:
+    radial-gradient(ellipse at 25% 20%, rgba(255, 252, 240, 0.07), transparent 50%),
+    radial-gradient(ellipse at 78% 78%, rgba(0, 0, 0, 0.22), transparent 55%),
+    linear-gradient(155deg, #6e6a5f 0%, #57534a 45%, #3c3933 100%);
+  box-shadow:
+    inset 2px 2px 1px rgba(255, 250, 235, 0.28),
+    inset -3px -3px 4px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(20, 18, 15, 0.65),
+    0 4px 10px rgba(0, 0, 0, 0.45);
+  color: #f7d873;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow:
+    0 0 6px rgba(240, 192, 64, 0.85),
+    0 0 14px rgba(240, 192, 64, 0.55),
+    0 1px 0 rgba(0, 0, 0, 0.4);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  transition: color 0.2s ease, text-shadow 0.2s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
-.main-menu__btn:hover:not(:disabled) {
-  border-color: #f0c040;
-  background: rgba(240, 192, 64, 0.06);
-  transform: translateY(-2px);
+.main-menu__stone:hover:not(:disabled) {
+  color: #ffe38f;
+  text-shadow:
+    0 0 8px rgba(240, 192, 64, 1),
+    0 0 20px rgba(240, 192, 64, 0.7),
+    0 1px 0 rgba(0, 0, 0, 0.4);
 }
 
+.main-menu__stone:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* [BLOCK: Primary Button Sizing]
+   Sizing-only modifier layered on top of .main-menu__stone — every root
+   and Play-view button (Play/Settings/How to Play/Random/Smart/Dev Test)
+   composes both classes together (see MainMenu.tsx). Single-line label
+   only now — the old title+sub-caption two-line layout (and
+   .main-menu__btn-sub) is gone per design direction, matching the
+   single-line convention Play/Skip and Shuffle already use elsewhere. */
+.main-menu__btn {
+  width: 220px;
+  padding: 14px 28px;
+  font-size: 18px;
+}
+
+/* [BLOCK: Disabled State — Smart, "Coming soon"]
+   Mirrors HUD.module.css's dormant (pre-`--ready`) Play/Skip look and
+   Board.module.css's disabled Shuffle look: flattened bevel, muted grey
+   text, no glow. `:disabled` in the shared .main-menu__stone rules above
+   already suppresses hover/active glow — this modifier additionally
+   overrides the DEFAULT (non-hover) color/shadow, since the base stone
+   class assumes "always glowing" unless told otherwise here. Replaces
+   the old flat `opacity: 0.4` treatment. */
 .main-menu__btn--disabled,
 .main-menu__btn:disabled {
-  opacity: 0.4;
+  color: #7c7669;
+  text-shadow: none;
   cursor: not-allowed;
+  box-shadow:
+    inset 1px 1px 1px rgba(255, 250, 235, 0.1),
+    inset -2px -2px 3px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(20, 18, 15, 0.5);
 }
 
-/* [BLOCK: Per-button accent hovers]
-   Play/Random share the default gold hover above. Settings and How to
-   Play get their own accent so the three root options read as distinct
-   at a glance, not just three identical boxes — blue for Settings
-   (matching the existing Dev Test accent elsewhere in the app), green
-   for How to Play (matching the board's "won"/success color), keeping
-   both within the app's existing palette rather than introducing new
-   colors. */
-.main-menu__btn--settings:hover:not(:disabled) {
-  border-color: #52b0e0;
-  background: rgba(82, 176, 224, 0.06);
-}
-
-.main-menu__btn--howto:hover:not(:disabled) {
-  border-color: #52c87a;
-  background: rgba(82, 200, 122, 0.06);
-}
-
-.main-menu__btn--dev:hover:not(:disabled) {
-  border-color: #52b0e0;
-  background: rgba(82, 176, 224, 0.06);
-}
-
-.main-menu__btn-sub {
-  font-size: 11px;
-  font-weight: 500;
-  color: #666;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-/* [BLOCK: Back link]
-   Plain text-style control (mirrors HUD.module.css's
-   .hud-sidebar__menu-link treatment) rather than a full bordered button —
-   secondary action, shouldn't visually compete with the primary
-   Play/Settings/How to Play buttons or the mode-select buttons above it. */
+/* [BLOCK: Back Button Sizing]
+   Same .main-menu__stone base as the primary buttons, just smaller —
+   secondary navigation shouldn't visually compete with Play/Settings/How
+   to Play or the mode-select buttons above it, but per design direction
+   it's now a full stone button, not the previous plain text link. */
 .main-menu__back {
-  padding: 6px 10px;
-  border: none;
-  background: transparent;
-  color: #888;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.main-menu__back:hover {
-  color: #f0c040;
+  padding: 8px 22px;
+  font-size: 14px;
+  border-radius: 8px;
 }
 
 /* [BLOCK: Panel — shared frame for Settings / How to Play]
