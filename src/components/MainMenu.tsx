@@ -15,7 +15,7 @@ const SHOW_DEV_TEST_BUTTON = false;
 // [BLOCK: Menu View State]
 // 'root'     — Play / Settings / How to Play (top-level menu)
 // 'play'     — Random / Smart mode select
-// 'settings' — SFX volume (placeholder, no audio system yet)
+// 'settings' — SFX placeholder (no audio system yet)
 // 'howto'    — full rules reference
 // All four render in the SAME component/screen — this is a local state
 // swap, not a route change, per design direction ("in the same page").
@@ -33,13 +33,6 @@ interface MainMenuProps {
 // [BLOCK: Component]
 export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
   const [view, setView] = useState<MenuView>('root');
-
-  // [Settings] Local-only placeholder value — no audio system exists yet,
-  // so this never actually plays anything; the slider renders disabled
-  // with a "Coming Soon" badge per current design direction. Kept as real
-  // state (not a hardcoded number) so the control is ready to wire up the
-  // moment SFX lands, without needing to touch this component again.
-  const [sfxVolume] = useState(70);
 
   function handleBack() {
     setView('root');
@@ -74,10 +67,9 @@ export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
             [Carved Stone Buttons] Every button below composes TWO
             classes: .main-menu__stone (the shared background/bevel/glow
             recipe — see MainMenu.module.css) + .main-menu__btn (sizing
-            only). Sub-captions are gone per design direction — these are
-            now single-line stone buttons, matching the Play/Skip and
-            Shuffle controls' own visual language elsewhere in the app,
-            rather than the old two-line title+caption cards. */}
+            only). Single-line labels, no sub-captions — matches the
+            Play/Skip and Shuffle controls' own visual language elsewhere
+            in the app. */}
         {view === 'root' && (
           <div className={styles['main-menu__options']}>
             <button
@@ -150,29 +142,19 @@ export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
           </>
         )}
 
-        {/* [VIEW: Settings — SFX volume placeholder]
-            Slider is genuinely disabled (not just styled to look inert) —
-            there's no audio system yet, so it must not imply the control
-            does anything right now. */}
+        {/* [VIEW: Settings]
+            [Paper Panel] No audio system exists yet, so rather than a
+            fake, permanently-disabled volume slider implying a control
+            that doesn't do anything, this is just a plain status message
+            on the same parchment panel How to Play uses — see
+            MainMenu.module.css's .main-menu__panel doc comment for the
+            paper treatment itself. */}
         {view === 'settings' && (
           <>
             <div className={styles['main-menu__panel']}>
-              <div className={styles['main-menu__settings-row']}>
-                <div className={styles['main-menu__settings-label-row']}>
-                  <span className={styles['main-menu__settings-label']}>SFX Volume</span>
-                  <span className={styles['main-menu__coming-soon']}>Coming Soon</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={sfxVolume}
-                  disabled
-                  readOnly
-                  className={styles['main-menu__slider']}
-                  aria-label="SFX volume (unavailable — no audio system yet)"
-                />
-              </div>
+              <p className={styles['main-menu__settings-message']}>
+                SFX yet to be added.
+              </p>
             </div>
 
             <button

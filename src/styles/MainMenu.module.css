@@ -106,16 +106,13 @@
    Split out as its OWN class (rather than folded into .main-menu__btn)
    so both the primary buttons and the smaller Back control below can
    compose it without duplicating the gradient/shadow stack twice.
-   Text carries a permanent gold glow at this base level — per design
-   direction every menu button here is always actionable when rendered
-   (unlike HUD's Play/Skip, which toggles between a dormant grey state
-   and a --ready glow depending on game state), so the "ready" glow from
-   that component is simply the DEFAULT here rather than a modifier class
-   layered on top. Only :disabled (Smart, "Coming soon") drops back to a
-   flattened, non-glowing look — see .main-menu__btn--disabled below.
-   Replaces the previous bordered-box treatment (dark fill, thin border,
-   per-button accent-color hover) entirely — that approach is gone, not
-   just restyled. */
+   Text carries a permanent gold glow at this base level — every menu
+   button here is always actionable when rendered (unlike HUD's
+   Play/Skip, which toggles between a dormant grey state and a --ready
+   glow depending on game state), so the "ready" glow from that component
+   is simply the DEFAULT here rather than a modifier class layered on
+   top. Only :disabled (Smart, "Coming soon") drops back to a flattened,
+   non-glowing look — see .main-menu__btn--disabled below. */
 .main-menu__stone {
   border: none;
   border-radius: 10px;
@@ -155,9 +152,7 @@
    Sizing-only modifier layered on top of .main-menu__stone — every root
    and Play-view button (Play/Settings/How to Play/Random/Smart/Dev Test)
    composes both classes together (see MainMenu.tsx). Single-line label
-   only now — the old title+sub-caption two-line layout (and
-   .main-menu__btn-sub) is gone per design direction, matching the
-   single-line convention Play/Skip and Shuffle already use elsewhere. */
+   only — no sub-caption. */
 .main-menu__btn {
   width: 220px;
   padding: 14px 28px;
@@ -170,8 +165,7 @@
    text, no glow. `:disabled` in the shared .main-menu__stone rules above
    already suppresses hover/active glow — this modifier additionally
    overrides the DEFAULT (non-hover) color/shadow, since the base stone
-   class assumes "always glowing" unless told otherwise here. Replaces
-   the old flat `opacity: 0.4` treatment. */
+   class assumes "always glowing" unless told otherwise here. */
 .main-menu__btn--disabled,
 .main-menu__btn:disabled {
   color: #7c7669;
@@ -186,120 +180,122 @@
 /* [BLOCK: Back Button Sizing]
    Same .main-menu__stone base as the primary buttons, just smaller —
    secondary navigation shouldn't visually compete with Play/Settings/How
-   to Play or the mode-select buttons above it, but per design direction
-   it's now a full stone button, not the previous plain text link. */
+   to Play or the mode-select buttons above it. */
 .main-menu__back {
   padding: 8px 22px;
   font-size: 14px;
   border-radius: 8px;
 }
 
-/* [BLOCK: Panel — shared frame for Settings / How to Play]
-   A single dark, bordered card centers both sub-views' content instead
-   of leaving form controls/text floating directly on the busy menu
-   artwork — same dark/border treatment already used for
-   StackInspector.module.css's panel, reused here for visual consistency
-   across the app's "floating panel" surfaces. min()'d max-height keeps
-   How to Play's longer content from ever forcing the fixed-height
-   #root/.app-shell to overflow, regardless of viewport size. */
+/* [BLOCK: Panel — Parchment]
+   [Paper Pass] Replaces the previous dark, bordered glass card (flat
+   rgba(13,13,26,0.92) fill + straight 1px border) with a CSS-only aged-
+   paper look — no texture image asset, purely gradients — shared by both
+   Settings and How to Play, since they've always composed the same
+   .main-menu__panel class and per design direction both should read as
+   the same "page" now, not just one of them.
+
+   Background is three stacked layers: two soft, off-center radial
+   washes in warm/cool sepia tones (breaks up what would otherwise be a
+   flat, obviously-a-gradient fill — real paper has uneven aging/staining,
+   not a perfectly smooth tone) over a base diagonal linear-gradient that
+   carries the overall cream-to-tan value range. A very faint diagonal
+   repeating-linear-gradient on top adds a subtle fiber/grain hint at
+   sub-pixel scale — intentionally faint enough to read as "paper has a
+   surface" without looking like a repeating pattern up close.
+
+   A plain, straight-edged rounded rectangle (a torn/deckled clip-path
+   edge was tried and reverted per design direction — "keep the paper,
+   not torn") with a thin warm-brown border standing in for a page edge,
+   plus a normal outer box-shadow for lift.
+   `overflow: hidden` keeps How to Play's inner scroll region
+   (.main-menu__howto-scroll) clipped to the panel's own rounded corners.
+   `justify-content: center` is harmless for How to Play (its one child,
+   .main-menu__howto-scroll, is flex:1 and always fills the full
+   available height regardless of justify-content), but it's what
+   vertically centers Settings' much shorter single-message content
+   within the same fixed-size panel rather than leaving it stranded at
+   the top. */
 .main-menu__panel {
-  width: min(420px, 90vw);
-  max-height: min(420px, 55vh);
+  width: min(460px, 92vw);
+  max-height: min(440px, 58vh);
   display: flex;
   flex-direction: column;
-  background: rgba(13, 13, 26, 0.92);
-  border: 1px solid #333;
-  border-radius: 12px;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
-  padding: 20px;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 22% 28%, rgba(150, 110, 60, 0.16), transparent 55%),
+    radial-gradient(ellipse at 78% 72%, rgba(90, 70, 40, 0.14), transparent 55%),
+    repeating-linear-gradient(
+      37deg,
+      rgba(90, 65, 35, 0.035) 0px,
+      rgba(90, 65, 35, 0.035) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    linear-gradient(155deg, #ecdfc0 0%, #ddc99e 45%, #cbb182 100%);
+  border-radius: 14px;
+  border: 1px solid rgba(90, 60, 30, 0.4);
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.5),
+    inset 0 0 40px rgba(90, 60, 30, 0.25),
+    inset 0 0 2px rgba(60, 40, 20, 0.4);
+  padding: 24px 28px;
   box-sizing: border-box;
   overflow: hidden;
   text-align: left;
 }
 
-/* [BLOCK: Settings — Volume Row] */
-.main-menu__settings-row {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.main-menu__settings-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.main-menu__settings-label {
-  font-size: 15px;
-  font-weight: 700;
-  color: #ddd;
-}
-
-/* [BLOCK: Coming Soon badge]
-   Same small-chip treatment as RoundHistory.module.css's cascade tag —
-   reused here rather than inventing a new chip style, so "temporary/
-   unavailable" reads consistently anywhere it shows up in the app. */
-.main-menu__coming-soon {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #52b0e0;
-  background: rgba(82, 176, 224, 0.12);
-  border: 1px solid rgba(82, 176, 224, 0.4);
-  border-radius: 4px;
-  padding: 2px 6px;
-  white-space: nowrap;
-}
-
-/* [BLOCK: Slider — genuinely disabled, not just styled inert]
-   No audio system exists yet (see MainMenu.tsx's doc comment on
-   sfxVolume) — the disabled attribute is what actually prevents
-   interaction; this styling just makes that state visually obvious
-   (flattened track, dimmed thumb) rather than looking like a normal,
-   working control that happens to not respond. */
-.main-menu__slider {
-  width: 100%;
-  accent-color: #52b0e0;
-  opacity: 0.45;
-  cursor: not-allowed;
+/* [BLOCK: Settings — plain status message]
+   Replaces the earlier fake volume-slider placeholder entirely — there's
+   no audio system yet, so a disabled slider implied a control that
+   doesn't actually do anything. This is just honest ink-on-paper text
+   instead, matching the How to Play panel's own body-text treatment. */
+.main-menu__settings-message {
+  margin: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  font-style: italic;
+  color: #3b2a16;
 }
 
 /* [BLOCK: How to Play — scrollable rules content]
-   Same scroll pattern as RoundHistory.module.css's .round-history__panel
-   (thin custom scrollbar, own overflow scope) so long content scrolls
-   internally rather than growing the panel past its own max-height. */
+   Scrollbar thumb switched from the previous gold-on-dark tone to a warm
+   ink-brown, so it reads as part of the paper rather than a leftover
+   dark-UI accent sitting on top of it. */
 .main-menu__howto-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: rgba(240, 192, 64, 0.4) transparent;
+  scrollbar-color: rgba(90, 60, 30, 0.5) transparent;
   padding-right: 6px;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
+/* [Paper Pass] Heading accent switched from gold to bold black — gold
+   text read poorly against the light parchment background; black at
+   full weight is far more legible while still standing apart from the
+   ink-brown body text below via weight/size/uppercase alone. */
 .main-menu__howto-section h3 {
   margin: 0 0 4px;
   font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #f0c040;
+  color: #000;
 }
 
 .main-menu__howto-section p {
   margin: 0;
   font-size: 13px;
   line-height: 150%;
-  color: #ccc;
+  color: #3b2a16;
 }
 
 .main-menu__howto-section strong {
-  color: #eee;
+  color: #1c1208;
 }
