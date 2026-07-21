@@ -1,45 +1,8 @@
 /* src/styles/MainMenu.module.css */
 
-/* [Background Art] menu.jpg (a battle-scene illustration, 5000x2812) is
-   applied via background-size: cover so it fills the container at any
-   viewport size without stretching or repeating. A dark linear-gradient
-   is layered on top of the image in the SAME background-image
-   declaration (rather than a separate overlay element) so light
-   title/button text stays legible over busy parts of the art.
-
-   [BLOCK: Layout — Title Pinned Higher]
-   Was a single centered flex column (title + subtitle + buttons all
-   riding the same vertical midpoint) — per design direction, the title
-   now sits near the TOP of the screen instead, with the interactive
-   content (buttons / sub-view panels) centered in the space left below
-   it. Achieved by splitting into two children — .main-menu__header
-   (auto-height, sits at the top via this container's own
-   justify-content) and .main-menu__content (flex: 1, centers itself
-   within whatever space remains) — rather than moving the title with a
-   fixed pixel offset, so this stays correct across viewport heights.
-
-   [BLOCK: Mobile Responsiveness]
-   Padding was a flat `140px 160px 40px` — on a short landscape OR
-   portrait phone (~375-430px wide, ~650-930px tall) that alone could eat
-   roughly half the visible height before any content even renders (see
-   mobile-responsive-plan.md's Phase 0). Switched to clamp() on all three
-   values so padding shrinks proportionally on small viewports but still
-   holds its original 140/160/40 look on desktop-sized windows — the
-   clamp() floor values (24px/20px/16px) are deliberately small rather
-   than zero, so the title/content never sit flush against the screen
-   edge even on the smallest supported phones.
-   Desktop behavior is unchanged: at typical desktop window sizes, the
-   preferred (vw/vh) value already exceeds the clamp's max, so the max
-   (140px/160px/40px) is what actually renders — identical to before this
-   pass.
-   `.main-menu__title` (h1, 45px) and `.main-menu__panel` (already
-   viewport-relative via min(460px, 92vw) / min(440px, 58vh) — see below)
-   were checked against real phone dimensions (390x844, 375x667) and hold
-   up correctly with this padding change alone; no changes needed to
-   either. Confirmed `.main-menu__title`'s own 45px also always wins over
-   index.css's h1 element-selector rules (56px, or 36px under its own
-   max-width:1024px query) on specificity (class beats bare element
-   selector) — no cross-file conflict regardless of viewport width. */
+/* [Background Art]
+   [BLOCK: Layout]
+   [BLOCK: Mobile Responsiveness ]*/
 .main-menu {
   display: flex;
   flex-direction: column;
@@ -52,7 +15,20 @@
   background-position: center;
   background-repeat: no-repeat;
   box-sizing: border-box;
-  padding: clamp(24px, 8vh, 140px) clamp(20px, 6vw, 160px) clamp(16px, 4vh, 40px);
+  padding: 140px 160px 40px;
+}
+
+/* [BLOCK: Mobile Responsiveness — Phase 0 — Short-Viewport Padding]
+   Only ever applies below 500px of viewport HEIGHT (phone-landscape
+   territory) — every taller window, desktop or otherwise, uses the flat
+   140px/160px/40px above untouched. Values here still use vh/vw so the
+   reduction itself scales smoothly across the short-viewport range
+   rather than jumping straight to one fixed small number, but they're
+   now scoped so they can never fire outside genuinely short viewports. */
+@media (max-height: 500px) {
+  .main-menu {
+    padding: clamp(16px, 8vh, 60px) clamp(16px, 6vw, 80px) clamp(12px, 4vh, 24px);
+  }
 }
 
 /* [BLOCK: Header — Title + per-view subtitle]

@@ -15,6 +15,7 @@ import { RoundHistory } from './components/RoundHistory';
 import { MainMenu } from './components/MainMenu';
 import { CardFlightOverlay } from './components/CardFlightOverlay';
 import type { FlightItem } from './components/CardFlightOverlay';
+import { RotatePrompt } from './components/RotatePrompt';
 import type {
   Card as CardType,
   SlotKey,
@@ -408,6 +409,52 @@ function App() {
   const [cascadeFightIndex, setCascadeFightIndex] = useState<number | null>(null);
   const [flights, setFlights] = useState<FlightItem[]>([]);
 
+  // [BLOCK: Mobile Responsiveness — Phase 1: Orientation Tracking]
+  // Whether the device is CURRENTLY in portrait orientation — tracked
+  // independent of `started`, since matchMedia itself doesn't care
+  // whether the game has been entered yet, but per
+  // mobile-responsive-plan.md decision #1/#2, only the GAME render
+  // (below) actually reacts to it — the Main Menu works natively in
+  // portrait and never shows the rotate prompt. Initialized synchronously
+  // from matchMedia (rather than defaulting to false) so a page load that
+  // starts in portrait doesn't show one frame of the wrong state before
+  // the effect below runs.
+  const [isPortrait, setIsPortrait] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia('(orientation: portrait)').matches;
+  });
+
+  // [BLOCK: Mobile Responsiveness — Phase 1: Orientation Listener]
+  // Kept live for the component's whole lifetime (not gated on
+  // `started`) — cheap to leave running, and it means isPortrait is
+  // already correct the instant the player enters the game rather than
+  // needing its own mount-on-start effect. Listens on three channels for
+  // robustness across devices/browsers: matchMedia's own 'change' event
+  // (the primary, most reliable signal on modern browsers), plus
+  // 'resize' and 'orientationchange' as belt-and-suspenders per
+  // mobile-responsive-plan.md's Phase 1 wording — cheap redundancy, not
+  // legacy-browser support (this project targets modern phones and up
+  // only, per the plan's decision #4).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mql = window.matchMedia('(orientation: portrait)');
+
+    function handleChange() {
+      setIsPortrait(mql.matches);
+    }
+
+    handleChange();
+    mql.addEventListener('change', handleChange);
+    window.addEventListener('resize', handleChange);
+    window.addEventListener('orientationchange', handleChange);
+
+    return () => {
+      mql.removeEventListener('change', handleChange);
+      window.removeEventListener('resize', handleChange);
+      window.removeEventListener('orientationchange', handleChange);
+    };
+  }, []);
+
   // [BLOCK: Timer Refs]
   // allTimers: every active timer ID — cleared on back-to-menu or skip.
   //   Timers are pushed in directly as they're created, including ones
@@ -707,9 +754,31 @@ function App() {
   // [BLOCK: Handlers]
   // devMode is dispatched into reducer state BEFORE flipping `started` to
   // true, so it's already set by the time the DRAW_CARDS effect fires.
+  //
+  // [Mobile Responsiveness — Phase 1] Attempts a best-effort programmatic
+  // orientation lock the moment the game starts. Per
+  // mobile-responsive-plan.md: this only succeeds in a narrow set of
+  // conditions (Chromium/Android, and on most implementations only
+  // *inside* an active Fullscreen element) and silently rejects/no-ops
+  // everywhere else, including all of iOS Safari — wrapped in try/catch
+  // and treated purely as a bonus. The RotatePrompt overlay (rendered
+  // below, gated on isPortrait) is the real, reliable mechanism this
+  // feature depends on regardless of whether this call succeeds.
   function handleStartGame(devModeOn: boolean) {
     dispatch({ type: 'SET_DEV_MODE', devMode: devModeOn });
     setStarted(true);
+
+    try {
+      const orientation = (screen as unknown as { orientation?: { lock?: (o: string) => Promise<void> } }).orientation;
+      orientation?.lock?.('landscape')?.catch(() => {
+        // Expected almost everywhere outside Chromium/Android+Fullscreen —
+        // no-op, RotatePrompt is the real mechanism.
+      });
+    } catch {
+      // Some engines throw synchronously rather than rejecting the
+      // promise (e.g. calling outside a user gesture, or no API at all) —
+      // same no-op outcome either way.
+    }
   }
 
   function handleBackToMenu() {
@@ -812,6 +881,10 @@ function App() {
   // instead (see that file's doc comment). No side-bleed panels here
   // either — MainMenu's own background already goes full-bleed edge to
   // edge, so there's nothing outside it for a side panel to fill.
+  // [Mobile Responsiveness] No RotatePrompt here either, per
+  // mobile-responsive-plan.md decision #1 — the Main Menu works natively
+  // in portrait, the rotate gate is a game-only concern (see the game
+  // render branch below).
   if (!started) {
     return (
       <div className={styles['app-shell']}>
@@ -841,6 +914,12 @@ function App() {
   // to frame a person rather than whatever slice the shared single-image
   // approach happened to land on (see the CSS file's comment for the
   // starting values and why they'll likely need visual fine-tuning).
+  //
+  // [Mobile Responsiveness — Phase 1] RotatePrompt renders here,
+  // conditionally on isPortrait, as a sibling alongside CardFlightOverlay
+  // — see RotatePrompt.tsx's doc comment for why it must stay outside any
+  // future scale-transform wrapper (Phase 2) despite living in this same
+  // JSX region today.
   return (
     <>
       <div className={styles['app-shell-side--left']} aria-hidden="true" />
@@ -1004,6 +1083,14 @@ function App() {
       </div>
 
       <CardFlightOverlay flights={flights} durationMs={RETURN_FLIGHT_MS} />
+
+      {/* [Mobile Responsiveness — Phase 1] Rendered last so it stacks on
+          top of everything above via its own z-index: 600 (see
+          RotatePrompt.module.css) — no reliance on DOM order for that,
+          since nothing in this tree creates a stacking context that would
+          trap it, but last-in-source is the clearest convention for "this
+          covers everything else" regardless. */}
+      {isPortrait && <RotatePrompt />}
     </>
   );
 }

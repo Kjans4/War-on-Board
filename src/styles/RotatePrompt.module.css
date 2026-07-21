@@ -1,0 +1,53 @@
+/* src/styles/RotatePrompt.module.css */
+
+/* [BLOCK: Mobile Responsiveness]*/
+   
+.rotate-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: rgba(6, 6, 10, 0.96);
+  color: #e8dfc8;
+  text-align: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* [BLOCK: Rotating Icon]
+   A simple phone outline that gently tilts back and forth between
+   upright and landscape — a lightweight animated hint rather than a
+   static icon, so the "rotate" instruction reads visually as well as in
+   text. Loops indefinitely since there's no dismiss action; it only ever
+   stops rendering because the component itself unmounts (device turned
+   landscape). */
+.rotate-prompt__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e8dfc8;
+  animation: rotate-prompt-tilt 1.6s ease-in-out infinite;
+}
+
+.rotate-prompt__text {
+  margin: 0;
+  font-family: var(--heading);
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+@keyframes rotate-prompt-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-90deg);
+  }
+}
