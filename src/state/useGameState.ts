@@ -547,8 +547,21 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       const newPlayerDiscards = placedPlayerCards.filter((c) => !survivorPlayerIds.has(c.id));
       const newAiDiscards = placedAiCards.filter((c) => !survivorAiIds.has(c.id));
 
-      const playerStack = [...state.playerStack, ...finalPlayerSurvivors];
-      const aiStack = [...state.aiStack, ...finalAiSurvivors];
+      // [Top-of-Stack Return] Survivors now go to the TOP of the stack
+      // (prepended) rather than the bottom — drawToFill (logic/deck.ts)
+      // always draws from the front of this array, so a card returned
+      // here is the very next one drawn next time, not something that
+      // resurfaces many rounds later. This is what gives Shuffle real
+      // purpose: leaving a stack un-shuffled means recently-played cards
+      // come right back around; shuffling scrambles that predictability
+      // away. getSurvivors already returns each side's survivors in
+      // Left->Center->Right order (it walks SLOT_KEYS in that order), so
+      // prepending them in that same order means Left's survivor (if
+      // any) becomes the single next card drawn, Center's second, Right's
+      // third — matching the reveal/cascade order convention used
+      // everywhere else in the codebase.
+      const playerStack = [...finalPlayerSurvivors, ...state.playerStack];
+      const aiStack = [...finalAiSurvivors, ...state.aiStack];
 
       const nextRound = state.round + 1;
       const isGameOver = nextRound > TOTAL_ROUNDS;
