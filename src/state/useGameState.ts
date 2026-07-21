@@ -17,6 +17,7 @@ import {
   CARDS_TO_PLACE,
   TOTAL_ROUNDS,
   SLOT_KEYS,
+  getPlacementCap,
 } from '../types/game';
 import { createShuffledDeck, drawToFill, shuffleStack } from '../logic/deck';
 import {
@@ -86,7 +87,12 @@ export type GameAction =
   // placements is Partial — getAIPlacement (logic/ai.ts) only returns
   // entries for the slots it was asked to fill (slotsToFill), which may be
   // a subset when Dev Test Mode's manual AI placement has already claimed
-  // some slots before this fires (see App.tsx's AI Placement Timer).
+  // some slots before this fires (see App.tsx's AI Placement Timer), OR
+  // when the AI's own hand simply doesn't have enough cards left to fill
+  // every slot (card scarcity — see types/game.ts's getPlacementCap;
+  // randomAIPlacement/smartAIPlacement in logic/ai.ts already leave a
+  // slot unfilled gracefully when hand runs short, with no changes needed
+  // there).
   | { type: 'PLACE_AI_CARDS'; placements: Partial<Record<SlotKey, Card>> }
   | { type: 'START_REVEAL' }
   | { type: 'REVEAL_ROUND' }
@@ -114,8 +120,22 @@ export type GameAction =
   | { type: 'RESTART' };
 
 // [BLOCK: Validation Helpers]
+// [Card Scarcity] Still used by PLACE_AI_CARDS' defensive "already fully
+// placed" guard below — unrelated to the readiness checks further down,
+// which now use getPlacementCap instead (a side may never legitimately
+// reach "all 3 slots filled" in a scarce round, and that's fine).
 function allSlotsPlaced(slots: BoardSlots): boolean {
   return SLOT_KEYS.every((k) => slots[k].card !== null);
+}
+
+// [Card Scarcity] A side is done placing for the round once it's filled
+// exactly as many slots as its own placement cap allows — normally 3, but
+// possibly fewer once its stack is empty and hand can't reach 3 either
+// (see types/game.ts's getPlacementCap doc comment). Used by both
+// START_REVEAL and REVEAL_ROUND's own defensive re-check below.
+function hasFinishedPlacing(hand: Card[], slots: BoardSlots): boolean {
+  const filled = SLOT_KEYS.filter((k) => slots[k].card !== null).length;
+  return filled === getPlacementCap(hand, slots);
 }
 
 function countCards(state: GameState, owner: 'player' | 'ai'): number {
@@ -155,6 +175,14 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     // -- Player places a card into a slot (face-down)
+    // [Card Scarcity] The CARDS_TO_PLACE cap here is unrelated to
+    // scarcity — it's just "there are only 3 physical slots," which is
+    // still true regardless of hand size. A genuinely short hand already
+    // self-limits (there's nothing left to select once the hand is
+    // empty), so no cap-related change is needed in this action itself —
+    // only the READINESS checks (START_REVEAL, and canConfirm in App.tsx)
+    // needed to change, since "all 3 filled" is no longer the right bar
+    // once a side's cap is below 3.
     case 'PLACE_CARD': {
       if (state.phase !== 'placement') return state;
 
@@ -245,6 +273,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     //    filled, and no longer advances phase itself. Guarded against
     //    double-firing for a round that's already placed (defensive; the
     //    timer that dispatches this already guards per-round via a ref).
+    //    [Card Scarcity] `placements` may legitimately cover fewer than 3
+    //    slots now — randomAIPlacement/smartAIPlacement (logic/ai.ts)
+    //    already leave a slot unfilled gracefully once the AI's own hand
+    //    runs out, same mechanism that already supported Dev Test Mode's
+    //    partial-fill case. Nothing here needs to change to support that;
+    //    this reducer already only ever touches slots actually present in
+    //    `placements`.
     case 'PLACE_AI_CARDS': {
       if (state.phase !== 'placement') return state;
       if (allSlotsPlaced(state.aiSlots)) return state;
@@ -277,13 +312,19 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     // -- Advances placement -> reveal. Split out from PLACE_AI_CARDS (which
     //    used to do both) now that the AI places on its own timer instead
     //    of in response to this moment — this is the player's Play click,
-    //    gated on BOTH sides having placed (App.tsx's canConfirm mirrors
-    //    this same double-check to keep the button disabled until the AI
-    //    has actually placed).
+    //    gated on BOTH sides having finished placing.
+    //    [Card Scarcity] Previously required allSlotsPlaced (literally 3)
+    //    for both sides. Replaced with hasFinishedPlacing, which compares
+    //    against each side's OWN placement cap — normally still 3, but
+    //    correctly allows fewer once a side's stack is empty and hand
+    //    can't reach 3 (see types/game.ts's getPlacementCap). App.tsx's
+    //    canConfirm mirrors this exact same check to keep the button
+    //    disabled/enabled in sync with what this reducer will actually
+    //    accept.
     case 'START_REVEAL': {
       if (state.phase !== 'placement') return state;
-      if (!allSlotsPlaced(state.playerSlots)) return state;
-      if (!allSlotsPlaced(state.aiSlots)) return state;
+      if (!hasFinishedPlacing(state.playerHand, state.playerSlots)) return state;
+      if (!hasFinishedPlacing(state.aiHand, state.aiSlots)) return state;
 
       return {
         ...state,
@@ -303,10 +344,15 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     //    History is recorded later via RECORD_HISTORY so it doesn't spoil
     //    the reveal animation; survivor cycling happens later via
     //    NEXT_ROUND.
+    //    [Card Scarcity] Guard below mirrors START_REVEAL's own
+    //    hasFinishedPlacing check — defensive re-validation in case this
+    //    ever fires without START_REVEAL having run first (it shouldn't,
+    //    but the previous allSlotsPlaced-based guard was already just
+    //    defensive in the same way).
     case 'REVEAL_ROUND': {
       if (state.phase !== 'reveal') return state;
-      if (!allSlotsPlaced(state.playerSlots)) return state;
-      if (!allSlotsPlaced(state.aiSlots)) return state;
+      if (!hasFinishedPlacing(state.playerHand, state.playerSlots)) return state;
+      if (!hasFinishedPlacing(state.aiHand, state.aiSlots)) return state;
 
       const resolution = resolveRound(state.playerSlots, state.aiSlots);
       const dragonPlayed = roundHasDragon(resolution);
@@ -344,6 +390,10 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       // Apply the (now cascade-aware) lane outcomes to slot states.
+      // [Card Scarcity] 'empty' is already a valid SlotState (reused from
+      // its pre-placement meaning — see types/game.ts's doc comment), so
+      // this assignment needs no special-casing even when player/ai is
+      // 'empty' for a given slot.
       const playerSlots: BoardSlots = { ...state.playerSlots };
       const aiSlots: BoardSlots = { ...state.aiSlots };
 
@@ -357,23 +407,27 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       // (ai-behavior.md defines no pattern behavior for it; patternHistory
       // is typed to RPS types only, see types/game.ts). This tracks what
       // the player PLACED, not the cascade outcome, so it's unaffected by
-      // cascade fights.
+      // cascade fights. [Card Scarcity] Guarded on the player actually
+      // having a card in this slot — a scarce round may leave a slot
+      // genuinely empty, which is simply not a data point to record,
+      // rather than an error.
       const patternHistory = { ...state.ai.patternHistory };
       if (state.ai.difficulty === 'smart' && !state.ai.confidenceDisrupted) {
         for (const key of SLOT_KEYS) {
-          const playedType = state.playerSlots[key].card!.type;
-          if (playedType !== 'Dragon') {
+          const playedType = state.playerSlots[key].card?.type;
+          if (playedType && playedType !== 'Dragon') {
             patternHistory[key] = [...patternHistory[key], playedType];
           }
         }
       }
 
       // Update cards seen by AI — Dragon excluded (single-use, untracked;
-      // see ai-behavior.md and ai.ts).
+      // see ai-behavior.md and ai.ts). [Card Scarcity] Same guard as
+      // above — an empty slot has no played type to record.
       const playerCardsSeen = { ...state.ai.playerCardsSeen };
       for (const key of SLOT_KEYS) {
-        const playedType = state.playerSlots[key].card!.type;
-        if (playedType !== 'Dragon') {
+        const playedType = state.playerSlots[key].card?.type;
+        if (playedType && playedType !== 'Dragon') {
           playerCardsSeen[playedType]++;
         }
       }
@@ -398,6 +452,11 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     //    cascade already computed by REVEAL_ROUND (not recomputed).
     //    Deferred until after the reveal animation plays so history
     //    doesn't spoil outcomes early (see ROADMAP.md history-timing note).
+    //    [Card Scarcity] playerSlots/aiSlots.card can be null now for a
+    //    slot that was never filled this round — `?.type ?? null` replaces
+    //    the previous `.card!.type` non-null assertion (which would have
+    //    crashed on a genuinely empty slot). RoundHistory.tsx displays
+    //    '—' for a null entry.
     case 'RECORD_HISTORY': {
       if (!state.pendingResolution) return state;
 
@@ -408,14 +467,14 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       const historyEntry: RoundHistoryEntry = {
         round: state.round,
         playerSlots: {
-          left:   state.playerSlots.left.card!.type,
-          center: state.playerSlots.center.card!.type,
-          right:  state.playerSlots.right.card!.type,
+          left:   state.playerSlots.left.card?.type ?? null,
+          center: state.playerSlots.center.card?.type ?? null,
+          right:  state.playerSlots.right.card?.type ?? null,
         },
         aiSlots: {
-          left:   state.aiSlots.left.card!.type,
-          center: state.aiSlots.center.card!.type,
-          right:  state.aiSlots.right.card!.type,
+          left:   state.aiSlots.left.card?.type ?? null,
+          center: state.aiSlots.center.card?.type ?? null,
+          right:  state.aiSlots.right.card?.type ?? null,
         },
         resolutions: {
           left:   { player: resolution.left.player,   ai: resolution.left.ai },
@@ -447,6 +506,10 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     //    Uses the stored resolution from REVEAL_ROUND (not a fresh
     //    resolveRound() call — see GameState.pendingResolution), then
     //    strips out any card the cascade discarded on top of that.
+    //    [Card Scarcity] placedPlayerCards/placedAiCards can now contain
+    //    null entries (a slot that was never filled this round) — filtered
+    //    out before discard routing, since there's no card there to
+    //    discard.
     case 'NEXT_ROUND': {
       if (state.phase !== 'resolution') return state;
       if (!state.pendingResolution) return state;
@@ -468,9 +531,15 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       // goes to that side's discard pile — covers lost, tied-lost, dragon,
       // and cascade-overridden won cards in one pass, without touching
       // combat/survivor logic above. Purely presentational bookkeeping
-      // (see GameState.playerDiscard/aiDiscard doc comment).
-      const placedPlayerCards = SLOT_KEYS.map((k) => resolution[k].playerCard);
-      const placedAiCards = SLOT_KEYS.map((k) => resolution[k].aiCard);
+      // (see GameState.playerDiscard/aiDiscard doc comment). Null entries
+      // (slots with no card this round) are filtered out first — nothing
+      // to discard for a lane that never had a card in it.
+      const placedPlayerCards = SLOT_KEYS
+        .map((k) => resolution[k].playerCard)
+        .filter((c): c is Card => c !== null);
+      const placedAiCards = SLOT_KEYS
+        .map((k) => resolution[k].aiCard)
+        .filter((c): c is Card => c !== null);
 
       const survivorPlayerIds = new Set(finalPlayerSurvivors.map((c) => c.id));
       const survivorAiIds = new Set(finalAiSurvivors.map((c) => c.id));

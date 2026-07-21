@@ -77,14 +77,18 @@ export function getDragonInfo(resolution: RoundResolution): { side: Owner; slotK
 }
 
 // [BLOCK: Single Slot Resolution — RPS/Exhausted only]
-// Assumes neither card is a Dragon; resolveRound only ever calls this for
-// slots untouched by a Dragon play (see below). Handles all exhausted tie
-// cases per card-systems.md. Mutates the exhausted flag on cards when a
-// fresh same-type tie occurs.
+// Assumes NEITHER card is a Dragon and BOTH cards are present (non-null) —
+// resolveRound only ever calls this for slots where both sides actually
+// have a real card to compare (see resolveSlotAny below for the
+// card-scarcity-aware wrapper that handles the null cases before ever
+// reaching here). Handles all exhausted tie cases per card-systems.md.
+// Mutates the exhausted flag on cards when a fresh same-type tie occurs.
 //
 // Also reused directly by resolveCascade() below for cascade fights —
 // cascade combat runs through the exact same RPS + exhausted rules as
-// normal lane resolution, per design discussion.
+// normal lane resolution, per design discussion. Cascade fights always
+// involve two REAL cards (a fight can only happen between two actual
+// lane-winners), so this two-non-null-Card signature is safe there too.
 export function resolveSlot(playerCard: Card, aiCard: Card): SlotResolution {
   if (playerCard.type === aiCard.type) {
     if (playerCard.exhausted && aiCard.exhausted) {
@@ -110,10 +114,44 @@ export function resolveSlot(playerCard: Card, aiCard: Card): SlotResolution {
   };
 }
 
+// [BLOCK: Card Scarcity — Nullable-Safe Slot Resolution]
+// Wraps resolveSlot to additionally handle a slot where one or both sides
+// have NO card at all this round — possible once a side's stack is empty
+// and its hand can't reach 3 either (see types/game.ts's
+// getPlacementCap). Per explicit design direction:
+//   - both present:      normal RPS/exhausted resolution (resolveSlot).
+//   - only one present:  that side's card wins AUTOMATICALLY — no RPS
+//                         comparison needed since there's nothing to
+//                         compare against — and is fully cascade-eligible
+//                         exactly like a normal win (collectWonEntries
+//                         below only ever checks the outcome STRING, it
+//                         has no way to tell an uncontested win from a
+//                         beaten-a-real-card win, which is exactly the
+//                         point — they behave identically from here on).
+//   - neither present:   the lane simply never happened. Both sides
+//                         'empty', no card either side — no discard, no
+//                         stack return, no flight, no cascade entry.
+function resolveSlotAny(playerCard: Card | null, aiCard: Card | null): SlotResolution {
+  if (playerCard && aiCard) {
+    return resolveSlot(playerCard, aiCard);
+  }
+  if (playerCard && !aiCard) {
+    return { player: 'won', ai: 'empty', playerCard, aiCard: null };
+  }
+  if (!playerCard && aiCard) {
+    return { player: 'empty', ai: 'won', playerCard: null, aiCard };
+  }
+  return { player: 'empty', ai: 'empty', playerCard: null, aiCard: null };
+}
+
 // [BLOCK: Full Round Resolution]
 // Resolves all 3 slots: left → center → right.
-// Requires both player and AI slots to be fully placed — caller must
-// validate before resolving (throws otherwise, matching prior behavior).
+// [Card Scarcity] Previously threw if either side was missing a card in
+// any slot — placement used to be strictly all-3-or-nothing. Now that a
+// side's own placement cap can legitimately be below 3 (see
+// types/game.ts's getPlacementCap), a slot can have a null card on either
+// side; every branch below is written to handle that instead of assuming
+// non-null, via resolveSlotAny and the null-aware Dragon branches.
 //
 // Dragon addendum (war-on-board-gdd.md's Dragon section, extended per
 // design discussion):
@@ -121,27 +159,32 @@ export function resolveSlot(playerCard: Card, aiCard: Card): SlotResolution {
 //     distinct outcome from 'lost'. Mechanically identical to 'lost' for
 //     survivor cycling (never returns to stack, single-use), but reads
 //     correctly in the UI as a deliberate wipe rather than a defeat. The
-//     opposing card in that same lane is destroyed ('lost'), same as before.
+//     opposing card in that same lane is destroyed ('lost') IF one was
+//     actually placed there — if the opponent had no card in this exact
+//     slot (card scarcity), there's nothing to destroy, so 'empty'.
 //   - One-sided Dragon play: all of the opponent's OTHER cards are
-//     destroyed ('lost'), the Dragon player's other 2 slots survive
-//     ('won') regardless of what's actually in them — those 2 cards
-//     return to stack normally, "saving" them.
-//   - Both sides play Dragon (any slot): effects cancel. Both Dragons are
+//     destroyed ('lost'), the Dragon player's other two slots survive
+//     ('won') regardless of what's actually in them — those two cards
+//     return to stack normally, "saving" them. [Card Scarcity] Dragon's
+//     wipe is a WHOLE-BOARD effect, not locality-dependent on what the
+//     Dragon owner happens to have in that exact off-slot — so the
+//     opponent's card in an off-slot is destroyed even if the Dragon
+//     owner placed nothing there themselves (scarcity); and the Dragon
+//     owner's own off-slot card (if any) is saved regardless of what the
+//     opponent has there. Either side being absent in a given off-slot
+//     just means that side reads 'empty' instead of 'won'/'lost' for it —
+//     there's simply nothing there to act on.
+//   - Both sides play Dragon (any slots): effects cancel. Both Dragons are
 //     discarded ('lost'/'lost' — a mutual cancel, NOT the 'dragon'
 //     outcome, since neither side actually wiped anything). Where one
-//     side's Dragon faces a non-Dragon card, that card survives untouched.
-//     Any slot untouched by either Dragon resolves normally via
-//     resolveSlot — normal combat continues in those lanes.
+//     side's Dragon faces a non-Dragon card, that card survives untouched
+//     (or reads 'empty' if the opposing slot has no card at all). Any
+//     slot untouched by either Dragon resolves normally via
+//     resolveSlotAny — normal combat continues in those lanes.
 export function resolveRound(
   playerSlots: BoardSlots,
   aiSlots: BoardSlots
 ): RoundResolution {
-  for (const key of SLOT_KEYS) {
-    if (!playerSlots[key].card || !aiSlots[key].card) {
-      throw new Error(`resolveRound: missing card in slot "${key}"`);
-    }
-  }
-
   const resolution = {} as RoundResolution;
 
   const playerDragonSlot = findDragonSlot(playerSlots);
@@ -152,21 +195,33 @@ export function resolveRound(
   // [SUB-BLOCK: Both play Dragon — cancel]
   if (playerHasDragon && aiHasDragon) {
     for (const key of SLOT_KEYS) {
-      const playerCard = playerSlots[key].card!;
-      const aiCard = aiSlots[key].card!;
+      const playerCard = playerSlots[key].card;
+      const aiCard = aiSlots[key].card;
       const playerIsDragon = key === playerDragonSlot;
       const aiIsDragon = key === aiDragonSlot;
 
       if (playerIsDragon && aiIsDragon) {
         // Dragon vs Dragon, same slot — both discarded, no contest, no wipe.
-        resolution[key] = { player: 'lost', ai: 'lost', playerCard, aiCard };
+        // Both cards are guaranteed non-null here (each is its owner's
+        // own detected Dragon slot).
+        resolution[key] = { player: 'lost', ai: 'lost', playerCard: playerCard!, aiCard: aiCard! };
       } else if (playerIsDragon) {
-        // Player's Dragon discarded; AI's card here is untouched (cancelled).
-        resolution[key] = { player: 'lost', ai: 'won', playerCard, aiCard };
+        // Player's Dragon discarded; AI's card here (if any) is untouched.
+        resolution[key] = {
+          player: 'lost',
+          ai: aiCard ? 'won' : 'empty',
+          playerCard: playerCard!,
+          aiCard,
+        };
       } else if (aiIsDragon) {
-        resolution[key] = { player: 'won', ai: 'lost', playerCard, aiCard };
+        resolution[key] = {
+          player: playerCard ? 'won' : 'empty',
+          ai: 'lost',
+          playerCard,
+          aiCard: aiCard!,
+        };
       } else {
-        resolution[key] = resolveSlot(playerCard, aiCard);
+        resolution[key] = resolveSlotAny(playerCard, aiCard);
       }
     }
     return resolution;
@@ -175,12 +230,28 @@ export function resolveRound(
   // [SUB-BLOCK: Player plays Dragon]
   if (playerHasDragon) {
     for (const key of SLOT_KEYS) {
-      const playerCard = playerSlots[key].card!;
-      const aiCard = aiSlots[key].card!;
-      resolution[key] =
-        key === playerDragonSlot
-          ? { player: 'dragon', ai: 'lost', playerCard, aiCard }
-          : { player: 'won', ai: 'lost', playerCard, aiCard };
+      const playerCard = playerSlots[key].card;
+      const aiCard = aiSlots[key].card;
+      if (key === playerDragonSlot) {
+        // Dragon's own lane — playerCard guaranteed non-null (it IS the
+        // detected Dragon). Opponent's card here (if any) is destroyed.
+        resolution[key] = {
+          player: 'dragon',
+          ai: aiCard ? 'lost' : 'empty',
+          playerCard: playerCard!,
+          aiCard,
+        };
+      } else {
+        // Off-slot — whole-board wipe: opponent's card here (if any) is
+        // destroyed regardless of what the Dragon owner has in this exact
+        // slot; the Dragon owner's own card here (if any) is saved.
+        resolution[key] = {
+          player: playerCard ? 'won' : 'empty',
+          ai: aiCard ? 'lost' : 'empty',
+          playerCard,
+          aiCard,
+        };
+      }
     }
     return resolution;
   }
@@ -188,19 +259,30 @@ export function resolveRound(
   // [SUB-BLOCK: AI plays Dragon]
   if (aiHasDragon) {
     for (const key of SLOT_KEYS) {
-      const playerCard = playerSlots[key].card!;
-      const aiCard = aiSlots[key].card!;
-      resolution[key] =
-        key === aiDragonSlot
-          ? { player: 'lost', ai: 'dragon', playerCard, aiCard }
-          : { player: 'lost', ai: 'won', playerCard, aiCard };
+      const playerCard = playerSlots[key].card;
+      const aiCard = aiSlots[key].card;
+      if (key === aiDragonSlot) {
+        resolution[key] = {
+          player: playerCard ? 'lost' : 'empty',
+          ai: 'dragon',
+          playerCard,
+          aiCard: aiCard!,
+        };
+      } else {
+        resolution[key] = {
+          player: playerCard ? 'lost' : 'empty',
+          ai: aiCard ? 'won' : 'empty',
+          playerCard,
+          aiCard,
+        };
+      }
     }
     return resolution;
   }
 
   // [SUB-BLOCK: No Dragon — normal per-slot resolution]
   for (const key of SLOT_KEYS) {
-    resolution[key] = resolveSlot(playerSlots[key].card!, aiSlots[key].card!);
+    resolution[key] = resolveSlotAny(playerSlots[key].card, aiSlots[key].card);
   }
 
   return resolution;
@@ -208,16 +290,23 @@ export function resolveRound(
 
 // [BLOCK: Survivor Cycling]
 // Given a round resolution, returns which cards go back to the stack bottom.
-// won → returns to stack
+// won → returns to stack (includes uncontested wins — see resolveSlotAny)
 // tied → returns to stack (exhausted flag already set in resolveSlot)
 // lost / tied-lost / dragon → discarded (not returned) — 'dragon' is
 // mechanically identical to 'lost' here: a played Dragon permanently
 // leaves the game either way, whether it's framed as a win or a loss.
+// empty → nothing to do, there was no card here at all.
 //
 // NOTE: this reflects the raw per-lane resolution only. Cascade overrides
 // (see resolveCascade below) are applied on top of this by the caller
 // (useGameState.ts's NEXT_ROUND) — a card counted as a survivor here may
 // still be discarded if the cascade flipped its lane's outcome to 'lost'.
+//
+// [Card Scarcity] playerCard/aiCard are nullable now; the `won`/`tied`
+// check is only ever true when a real card is present (resolveRound never
+// produces 'won'/'tied' alongside a null card — see resolveSlotAny and the
+// Dragon branches above), but the null check here is a defensive
+// TypeScript-narrowing guard, not just decoration.
 export function getSurvivors(resolution: RoundResolution): {
   playerSurvivors: Card[];
   aiSurvivors: Card[];
@@ -228,8 +317,8 @@ export function getSurvivors(resolution: RoundResolution): {
   for (const key of SLOT_KEYS) {
     const { player, ai, playerCard, aiCard } = resolution[key];
 
-    if (player === 'won' || player === 'tied') playerSurvivors.push(playerCard);
-    if (ai === 'won' || ai === 'tied') aiSurvivors.push(aiCard);
+    if ((player === 'won' || player === 'tied') && playerCard) playerSurvivors.push(playerCard);
+    if ((ai === 'won' || ai === 'tied') && aiCard) aiSurvivors.push(aiCard);
   }
 
   return { playerSurvivors, aiSurvivors };
@@ -238,7 +327,7 @@ export function getSurvivors(resolution: RoundResolution): {
 // [BLOCK: Cascade Combat]
 // After normal per-lane resolution, whichever card WON its lane (from
 // either side) enters a sequential elimination fight, Left -> Center ->
-// Right. Tied/tied-lost lanes withdraw and never enter the cascade.
+// Right. Tied/tied-lost/empty lanes withdraw and never enter the cascade.
 //
 // Algorithm: walk the ordered list of lane-winners. The first winner
 // becomes the "champion" with no fight. Each subsequent winner either:
@@ -264,21 +353,26 @@ interface CascadeEntry {
   card: Card;
 }
 
-// Collects lane-winners in Left -> Center -> Right order. Ties/tied-lost
-// lanes are excluded entirely (they withdraw from the cascade).
+// Collects lane-winners in Left -> Center -> Right order. Ties/tied-lost/
+// empty lanes are excluded entirely (they withdraw from the cascade, or —
+// for 'empty' — never had a card to begin with). An uncontested win (card
+// scarcity) is collected exactly like any other win — playerCard/aiCard
+// is guaranteed non-null whenever the outcome is 'won', per resolveRound's
+// invariants, so the non-null assertion here is safe.
 function collectWonEntries(resolution: RoundResolution): CascadeEntry[] {
   const entries: CascadeEntry[] = [];
   for (const key of SLOT_KEYS) {
     const { player, ai, playerCard, aiCard } = resolution[key];
-    if (player === 'won') entries.push({ slotKey: key, owner: 'player', card: playerCard });
-    else if (ai === 'won') entries.push({ slotKey: key, owner: 'ai', card: aiCard });
+    if (player === 'won') entries.push({ slotKey: key, owner: 'player', card: playerCard! });
+    else if (ai === 'won') entries.push({ slotKey: key, owner: 'ai', card: aiCard! });
   }
   return entries;
 }
 
 // Runs a single cascade fight between two entries via the same
 // resolveSlot() used for lane resolution — mutates exhausted flags exactly
-// like a normal matchup would.
+// like a normal matchup would. Both entries always carry a real Card (see
+// CascadeEntry), so resolveSlot's non-null signature applies directly.
 function runCascadeFight(
   a: CascadeEntry,
   b: CascadeEntry
@@ -298,11 +392,14 @@ function refOf(entry: CascadeEntry): CascadeCardRef {
 // Detects whether a Dragon was played this round at all — if so, the whole
 // round was already resolved via the Dragon override in resolveRound(), so
 // there's no meaningful per-lane "winner" to run a cascade over.
+// [Card Scarcity] playerCard/aiCard are nullable now — optional chaining
+// (`?.type`) instead of a direct property read, since a slot's card on
+// either side may legitimately be null (nothing placed there at all).
 export function roundHasDragon(resolution: RoundResolution): boolean {
   return SLOT_KEYS.some(
     (key) =>
-      resolution[key].playerCard.type === 'Dragon' ||
-      resolution[key].aiCard.type === 'Dragon'
+      resolution[key].playerCard?.type === 'Dragon' ||
+      resolution[key].aiCard?.type === 'Dragon'
   );
 }
 

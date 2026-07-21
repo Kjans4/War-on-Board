@@ -162,6 +162,14 @@
     inset 0 -1px 0 rgba(255, 245, 225, 0.05);
 }
 
+/* [Card Scarcity] A slot where this side had no card at all this round —
+   dimmed rather than colored, since there's no combat result to signal,
+   just an absence. Distinct from every other .round-history__slot--*
+   modifier below, which all represent an actual outcome. */
+.round-history__slot--empty {
+  opacity: 0.55;
+}
+
 /* [BLOCK: Carved Wood Typography — Round History Pass]
    Per-slot matchup text (e.g. "Sword vs Shield") — bumped from 11px to
    12px, switched to Cinzel + the same carved dark-brown/shadow recipe.
@@ -216,6 +224,8 @@
 .round-history__slot--tied  .round-history__outcome-badge { background: #e0a030; color: #1a1000; }
 .round-history__slot--tied-lost .round-history__outcome-badge { background: #444; color: #aaa; }
 .round-history__slot--dragon .round-history__outcome-badge { background: #f0c040; color: #2a1a00; }
+/* [Card Scarcity] Neutral grey chip — no card here, not a combat result. */
+.round-history__slot--empty .round-history__outcome-badge { background: #333; color: #888; }
 
 /* [BLOCK: Cascade Fight Log] */
 .round-history__cascade-log {

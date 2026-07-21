@@ -23,7 +23,7 @@ import type {
   CombatOutcome,
   CascadeFightLog,
 } from './types/game';
-import { SLOT_KEYS } from './types/game';
+import { SLOT_KEYS, getPlacementCap } from './types/game';
 import styles from './styles/App.module.css';
 // [Layout — Hand Row Symmetric Ghost] Reuses Board.module.css's
 // stack-col-wrap / stack-col__shuffle classes to render an invisible
@@ -204,6 +204,12 @@ function buildPhase1Flights(
   for (const key of SLOT_KEYS) {
     const { player, ai, playerCard, aiCard } = resolution[key];
 
+    // [Card Scarcity] These outcome strings ('lost'/'tied-lost'/'tied')
+    // only ever occur when a real card was actually present on this side
+    // — resolveRound never produces them alongside a null card (an
+    // absent side always reads 'empty' instead, see combat.ts). The
+    // non-null assertion below documents that invariant for TypeScript,
+    // which otherwise sees playerCard/aiCard as possibly null now.
     if (player === 'lost' || player === 'tied-lost' || player === 'tied') {
       const fromEl = refs[`slot-player-${key}`];
       const destKey = player === 'tied' ? 'stack-player' : 'discard-player';
@@ -211,7 +217,7 @@ function buildPhase1Flights(
       if (fromEl && dest) {
         flights.push({
           id: `player-${key}-p1`,
-          card: playerCard,
+          card: playerCard!,
           fromRect: fromEl.getBoundingClientRect(),
           toRect: dest.getBoundingClientRect(),
           faceDown: false,
@@ -226,7 +232,7 @@ function buildPhase1Flights(
       if (fromEl && dest) {
         flights.push({
           id: `ai-${key}-p1`,
-          card: aiCard,
+          card: aiCard!,
           fromRect: fromEl.getBoundingClientRect(),
           toRect: dest.getBoundingClientRect(),
           faceDown: false,
@@ -269,7 +275,11 @@ function buildCascadeFightFlights(
   const flights: FlightItem[] = [];
 
   function flyLoser(owner: Owner, slotKey: SlotKey) {
-    const card = owner === 'player' ? resolution[slotKey].playerCard : resolution[slotKey].aiCard;
+    // [Card Scarcity] A cascade fight only ever happens between two real
+    // cards (see combat.ts's resolveCascade — CascadeEntry always carries
+    // a non-null Card), so the losing side here is guaranteed to have one
+    // even though playerCard/aiCard are typed nullable now.
+    const card = owner === 'player' ? resolution[slotKey].playerCard! : resolution[slotKey].aiCard!;
     const fromEl = refs[`slot-${owner}-${slotKey}`];
     const dest = refs[`discard-${owner}`];
     if (fromEl && dest) {
@@ -329,7 +339,12 @@ function buildReturnFlights(
   for (const key of SLOT_KEYS) {
     const { player, ai, playerCard, aiCard } = resolution[key];
 
-    if (!skipOutcomes.has(player)) {
+    // [Card Scarcity] playerCard/aiCard can be null now (a slot that had
+    // no card on this side this round — see combat.ts's resolveRound).
+    // 'empty' never matches skipOutcomes' contents, so the null check
+    // here is what actually prevents building a flight for a card that
+    // doesn't exist.
+    if (!skipOutcomes.has(player) && playerCard) {
       const playerSurvives = player === 'won' || player === 'tied';
       const playerSlotEl = refs[`slot-player-${key}`];
       if (playerSlotEl) {
@@ -346,7 +361,7 @@ function buildReturnFlights(
       }
     }
 
-    if (!skipOutcomes.has(ai)) {
+    if (!skipOutcomes.has(ai) && aiCard) {
       const aiSurvives = ai === 'won' || ai === 'tied';
       const aiSlotEl = refs[`slot-ai-${key}`];
       if (aiSlotEl) {
@@ -656,10 +671,23 @@ function App() {
   }, [phase]);
 
   // [BLOCK: Derived values]
-  const aiHasPlaced = SLOT_KEYS.every((k) => aiSlots[k].card !== null);
+  // [Card Scarcity] Previously required literally all 3 slots filled on
+  // both sides. A side's real target for the round is its own placement
+  // cap instead — normally still 3, but possibly fewer once its stack is
+  // empty and hand can't reach 3 either (see types/game.ts's
+  // getPlacementCap doc comment). Each side is capped independently, per
+  // design direction — a scarce player doesn't force the AI to also place
+  // fewer, and vice versa. Mirrors useGameState.ts's START_REVEAL/
+  // REVEAL_ROUND guards exactly, so the button's enabled state never
+  // drifts from what the reducer will actually accept.
+  const playerFilledCount = SLOT_KEYS.filter((k) => playerSlots[k].card !== null).length;
+  const aiFilledCount = SLOT_KEYS.filter((k) => aiSlots[k].card !== null).length;
+  const playerCap = getPlacementCap(playerHand, playerSlots);
+  const aiCap = getPlacementCap(aiHand, aiSlots);
+  const aiHasPlaced = aiFilledCount === aiCap;
   const canConfirm =
     phase === 'placement' &&
-    SLOT_KEYS.every((k) => playerSlots[k].card !== null) &&
+    playerFilledCount === playerCap &&
     aiHasPlaced;
 
   // canSkip: true for the entire reveal + auto-transition window.

@@ -23,6 +23,10 @@ interface RoundHistoryProps {
 // differently from both a plain "Win" and a plain "Loss" (see
 // useGameState.ts's RECORD_HISTORY, which now stores the post-cascade
 // outcome here rather than the raw pre-cascade one).
+// [Card Scarcity] 'empty' is new — this side had no card in this slot at
+// all this round (its stack was empty and hand couldn't reach 3 either;
+// see types/game.ts's getPlacementCap). Shown as a plain dash rather than
+// a colored win/loss badge — it's not a combat result, just an absence.
 const OUTCOME_LABELS: Record<CombatOutcome, string> = {
   won: 'Win',
   lost: 'Loss',
@@ -30,6 +34,7 @@ const OUTCOME_LABELS: Record<CombatOutcome, string> = {
   tied: 'Tie',
   'tied-lost': 'Spent',
   dragon: 'Win',
+  empty: '—',
 };
 
 // [BLOCK: Cascade Fight Log Formatting]
@@ -110,8 +115,13 @@ export function RoundHistory({ history }: RoundHistoryProps) {
                     {SLOT_KEYS.map((key: SlotKey) => {
                       const outcome = entry.resolutions[key];
 
-                      let leftLabel: string = entry.playerSlots[key];
-                      let rightLabel: string = entry.aiSlots[key];
+                      // [Card Scarcity] entry.playerSlots[key]/aiSlots[key]
+                      // are nullable now — a slot with no card this round
+                      // (see types/game.ts's RoundHistoryEntry doc
+                      // comment) falls back to a plain dash instead of a
+                      // card type name.
+                      let leftLabel: string = entry.playerSlots[key] ?? '—';
+                      let rightLabel: string = entry.aiSlots[key] ?? '—';
                       let showLeftDragonIcon = false;
                       let showRightDragonIcon = false;
 

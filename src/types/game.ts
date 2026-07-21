@@ -23,10 +23,21 @@ export interface Card {
 export type SlotKey = 'left' | 'center' | 'right';
 
 export type SlotState =
-  | 'empty'      // no card placed yet
+  | 'empty'      // no card placed yet — ALSO reused post-resolution for a
+                  // slot where this side had no card to place at all this
+                  // round (see CombatOutcome's 'empty' below and card-
+                  // scarcity handling in combat.ts) — same "blank, no
+                  // badge" rendering already covers both cases in Slot.tsx
+                  // with no extra code, since OUTCOME_CONFIG there has no
+                  // entry for 'empty' either way.
   | 'placed'     // card placed face-down, awaiting reveal
   | 'revealed'   // card flipped face-up during resolution
-  | 'won'        // card survived this round's lane resolution
+  | 'won'        // card survived this round's lane resolution — this now
+                  // also covers an UNCONTESTED win, where the opposing
+                  // side had no card in this slot at all (card scarcity)
+                  // and this card's win is automatic rather than an RPS
+                  // comparison; it's still cascade-eligible either way,
+                  // see combat.ts's resolveSlotAny.
   | 'lost'       // card discarded — lost its lane outright, was destroyed
                   // by the opponent's Dragon, or was cancelled in a
                   // both-play-Dragon lane
@@ -61,13 +72,26 @@ export interface Slot {
 export type BoardSlots = Record<SlotKey, Slot>;
 
 // [BLOCK: Combat]
-export type CombatOutcome = 'won' | 'lost' | 'tied' | 'tied-lost' | 'dragon' | 'cascaded';
+// [Card Scarcity] 'empty' added — a side can now legitimately have NO card
+// in a given slot for the round (its stack is empty and hand ran out
+// before reaching 3 — see combat.ts's card-scarcity handling and
+// useGameState.ts's getPlacementCap). Distinct from every other outcome:
+// there's no card to discard, return to stack, or animate a flight for.
+export type CombatOutcome = 'won' | 'lost' | 'tied' | 'tied-lost' | 'dragon' | 'cascaded' | 'empty';
 
+// [Card Scarcity] playerCard/aiCard are now nullable — a slot can resolve
+// with only one side present (that side's outcome is 'won' — see
+// combat.ts's resolveSlotAny) or, more rarely, neither side present
+// (both 'empty', a lane that simply never happened this round). Every
+// consumer that reads these fields (getSurvivors, NEXT_ROUND's discard
+// routing, App.tsx's flight builders, RECORD_HISTORY) has to treat them
+// as possibly null now — see each file's own doc comments at the
+// relevant read site.
 export interface SlotResolution {
   player: CombatOutcome;
   ai: CombatOutcome;
-  playerCard: Card;
-  aiCard: Card;
+  playerCard: Card | null;
+  aiCard: Card | null;
 }
 
 export interface RoundResolution {
@@ -81,7 +105,11 @@ export interface RoundResolution {
 // either side) enters a sequential elimination fight, in Left -> Center ->
 // Right order. Tied/tied-lost lanes withdraw and never enter the cascade.
 // A Dragon round never enters the cascade at all (see combat.ts's
-// resolveCascade — it's gated on dragonPlayed).
+// resolveCascade — it's gated on dragonPlayed). An uncontested win (card
+// scarcity — the opposing side had no card in this lane) enters the
+// cascade exactly like any other 'won' lane; collectWonEntries in
+// combat.ts doesn't distinguish "won by beating something" from "won by
+// default," both just read as 'won' on that side.
 export type CascadeFightOutcome =
   | 'championWon'    // the standing champion beat the challenger
   | 'challengerWon'  // the challenger beat the champion (champion falls)
@@ -139,8 +167,12 @@ export interface AIState {
 // [BLOCK: Round History]
 export interface RoundHistoryEntry {
   round: number;
-  playerSlots: Record<SlotKey, CardType>;
-  aiSlots: Record<SlotKey, CardType>;
+  // [Card Scarcity] Nullable — a side that had no card in a given slot
+  // this round (see combat.ts's resolveRound) has nothing to record here.
+  // RoundHistory.tsx displays '—' for a null entry instead of a card
+  // type name.
+  playerSlots: Record<SlotKey, CardType | null>;
+  aiSlots: Record<SlotKey, CardType | null>;
   resolutions: Record<SlotKey, { player: CombatOutcome; ai: CombatOutcome }>;
   playerCardsAfter: number; // stack + hand count after round
   aiCardsAfter: number;
@@ -239,3 +271,22 @@ export const DRAGON_COUNT = 1;                 // per deck
 export const DECK_SIZE = CARDS_PER_TYPE * 3 + DRAGON_COUNT; // 22
 export const SLOT_KEYS: SlotKey[] = ['left', 'center', 'right'];
 export const RPS_TYPES: RPSType[] = ['Sword', 'Arrow', 'Shield'];
+
+// [BLOCK: Card Scarcity — Placement Cap]
+// A side's real placement target for THIS round: normally always 3 (the
+// number of slots), but drops below that once its stack is fully empty
+// and its hand can't reach 3 either — see the Card Scarcity notes above.
+// `hand.length + filled` is invariant across the whole placement phase
+// (a card only ever moves between hand and a slot, never anywhere else,
+// until NEXT_ROUND), so this can be safely recomputed at any point during
+// placement — before anything's been placed, during, or once finished —
+// and always yields the same answer for a given round. Each side is
+// capped INDEPENDENTLY by its own hand/stack state — per explicit design
+// direction, a scarce player doesn't force the AI (or vice versa) to also
+// place fewer; a 2-card side just leaves its own unfilled slot(s) as
+// uncontested wins for whatever the other side has there (see
+// combat.ts's resolveSlotAny).
+export function getPlacementCap(hand: Card[], slots: BoardSlots): number {
+  const filled = SLOT_KEYS.filter((k) => slots[k].card !== null).length;
+  return Math.min(CARDS_TO_PLACE, hand.length + filled);
+}
