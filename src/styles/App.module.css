@@ -41,12 +41,25 @@
    hugged width — without it, a very small screen could force this row to
    overflow past #root's own bounds (which has `overflow: hidden`,
    meaning content would just get clipped rather than reflow).
-   Purely a WIDTH change — .app-shell's own `height: 100svh` and
-   .left-sidebar's height constraints still fix the height/cross-axis
-   concerns, so the sidebar's header/round-history/footer flex
-   distribution is unaffected. */
+
+   [BLOCK: Mobile Responsiveness — Phase 2]
+   Added `height: 100%` here — this rule already overrides `.app-shell`'s
+   base `width` (fit-content vs. the base rule's 100%), so extending that
+   same "modifier overrides the base rule" pattern to height is a small,
+   consistent addition, not a new mechanism. It's needed because this
+   element now renders INSIDE the fixed-size `.game-canvas` box (see that
+   class below) rather than directly inside #root — the base `.app-shell`
+   rule's `height: 100svh` always resolves against the REAL viewport
+   regardless of ancestor size/transforms, which would make this element
+   want to be taller than the 700px canvas box actually is. `height: 100%`
+   correctly sizes it to fill whatever its immediate parent provides
+   instead — the fixed 700px canvas here, or (on the Main Menu, which
+   never gets this modifier class at all — see App.tsx) nothing, since
+   Main Menu's plain `.app-shell` is untouched and still uses the real
+   100svh as before. */
 .app-shell--table {
   width: fit-content;
+  height: 100%;
   max-width: 100%;
   margin: 0 auto;
   border-inline: 1px solid var(--border, #222);
@@ -54,6 +67,69 @@
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
+}
+
+/* [BLOCK: Mobile Responsiveness — Phase 2: Scale-to-Fit Canvas]
+   Per mobile-responsive-plan.md's Phase 2: rather than re-deriving every
+   proportional relationship in this codebase's deliberately PIXEL-EXACT
+   layout (ghost spacers, fan-geometry math, fixed card/slot sizes — see
+   that file's own risk analysis), the whole game screen renders at one
+   fixed internal design resolution and the browser scales it uniformly
+   to fit whatever real viewport it's shown on. Every ghost/ghost-clone,
+   fan offset, and pixel-matched pair scales together automatically as a
+   direct consequence — none of them need to individually become
+   responsive.
+
+   .game-canvas-viewport takes over the job .app-shell used to do
+   directly against #root (flex: 1, height: 100svh, filling whatever
+   space #root's own flex layout provides) — it's now the thing sized
+   against the REAL viewport, while .app-shell itself (nested inside
+   .game-canvas below) is sized against the fixed design box instead (see
+   .app-shell--table's height: 100% addition above). `overflow: hidden`
+   here is a second line of defense alongside #root's own — the canvas is
+   capped at scale 1 (see App.tsx's gameScale calculation) so it should
+   never actually overflow, but this keeps any rounding-error sliver from
+   ever becoming visible/scrollable.
+
+   .game-canvas is the fixed 1040x700 design box itself — NOT measured
+   from .app-board-column's 700px cap (that cap is rarely if ever actually
+   binding in real play, see its own doc comment below; it overstates the
+   true rendered width). 1040px was measured from the real content-hugging
+   footprint: .left-sidebar's 228px + the board/hand column's real
+   ~540-560px + the spacer's 228px. 700px height has no equivalent
+   "natural" value to measure — the desktop layout deliberately stretches
+   to fill 100svh — so it's a deliberate baseline choice instead (roughly
+   what a modern phone's own screen width becomes once rotated to
+   landscape), not a measurement.
+   Centered via the classic absolute + top/left:50% + translate(-50%,-50%)
+   trick, with `scale()` appended AFTER the translate in the transform
+   list — since transform-origin defaults to center center, appending
+   scale here shrinks/grows the box symmetrically around that same
+   center point without disturbing the translate-based centering itself
+   (translate's percentage values are computed against this element's OWN
+   untransformed box size, independent of the scale factor). --game-scale
+   is set inline by App.tsx (computed from window.innerWidth/innerHeight
+   against this box's own 1040/700, capped at 1 — see App.tsx's doc
+   comment for why capping matters: without it, a large desktop/tablet
+   window would blow the board up larger than its designed size instead
+   of just letterboxing extra space around it). */
+.game-canvas-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100svh;
+  overflow: hidden;
+}
+
+.game-canvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1040px;
+  height: 700px;
+  transform-origin: center center;
+  transform: translate(-50%, -50%) scale(var(--game-scale, 1));
 }
 
 /* [BLOCK: Side-Bleed Art Panels — Left / Right]
@@ -67,6 +143,14 @@
    covers whatever these panels render underneath its center — only the
    true left/right margins outside the (now content-hugging, see
    .app-shell--table above) frame ever actually show.
+
+   [Mobile Responsiveness — Phase 2] These stay OUTSIDE
+   .game-canvas-viewport/.game-canvas entirely (see App.tsx — they're
+   siblings rendered before it, same as before this pass) and continue
+   sizing against the real viewport (50vw/100vh-equivalent via `inset`),
+   not the scaled design box — they're background flourish behind the
+   game frame, not gameplay surface, so scaling them along with the board
+   would crop/distort the art for no benefit.
 
    Each side gets its OWN background-position rather than sharing one
    image placement — the single-shared-background approach (previously on
@@ -235,9 +319,12 @@
    doc comment: the frame's TOTAL width is never hardcoded, it's derived
    from sidebar + this + spacer). In normal play this cap is rarely if
    ever actually binding — 3 slots + stack piles + a 5-card fanned hand
-   render narrower than 700px on their own — so this mostly acts as a
-   documented ceiling against future growth (e.g. a larger HAND_SIZE)
-   rather than a constraint that visibly compresses today's board. */
+   render narrower than 700px on their own (measured real width is closer
+   to ~540-560px — see App.module.css's .game-canvas doc comment, which
+   uses that real number rather than this cap for its own baseline) — so
+   this mostly acts as a documented ceiling against future growth (e.g. a
+   larger HAND_SIZE) rather than a constraint that visibly compresses
+   today's board. */
 .app-board-column {
   display: flex;
   flex-direction: column;

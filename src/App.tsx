@@ -1,6 +1,7 @@
 // src/App.tsx
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import type { CSSProperties } from 'react';
 import clsx from 'clsx';
 import { useGameState } from './state/useGameState';
 import { getAIPlacement } from './logic/ai';
@@ -77,6 +78,29 @@ const AI_PLACEMENT_DELAY_MS = 2000;
 // NEXT_ROUND dispatch — this genuinely extends total round length (by
 // design: pacing takes a back seat to letting the flight read clearly).
 const RETURN_FLIGHT_MS = 450;
+
+// [BLOCK: Mobile Responsiveness — Phase 2: Scale-to-Fit Canvas]
+// Fixed design resolution the whole game screen (everything inside
+// .app-shell--table) renders at internally — see App.module.css's
+// .game-canvas / .game-canvas-viewport. The browser scales this fixed box
+// uniformly to fit whatever real viewport it's shown on, via gameScale
+// below, rather than any of the game's pixel-matched ghosts/spacers/fan
+// math having to become independently responsive (see
+// mobile-responsive-plan.md's own risk analysis for why that would be
+// fragile).
+//
+// GAME_CANVAS_WIDTH (1040) was measured from the real content-hugging
+// footprint — .left-sidebar's 228px + the board/hand column's real
+// rendered width (~540-560px, NOT .app-board-column's 700px cap, which is
+// rarely actually binding — see that class's own doc comment) + the
+// spacer's 228px.
+// GAME_CANVAS_HEIGHT (700) has no equivalent "natural" value to measure —
+// the desktop layout deliberately stretches to fill 100svh instead of
+// having one fixed height — so this is a deliberate baseline choice
+// (roughly what a modern phone's own screen width becomes once rotated to
+// landscape), confirmed as the starting point to try.
+const GAME_CANVAS_WIDTH = 1040;
+const GAME_CANVAS_HEIGHT = 700;
 
 // [BLOCK: Reveal Timeline Types]
 interface StepEvent {
@@ -455,6 +479,40 @@ function App() {
     };
   }, []);
 
+  // [BLOCK: Mobile Responsiveness — Phase 2: Scale Tracking]
+  // The current scale factor applied to .game-canvas (see
+  // App.module.css) — recomputed on every resize/orientationchange
+  // against the fixed GAME_CANVAS_WIDTH/HEIGHT design box.
+  // Math.min(scaleX, scaleY, 1) both letterboxes (rather than stretches)
+  // any viewport whose aspect ratio doesn't match the design box, and
+  // caps at 1 so the board never renders LARGER than its designed size on
+  // a big desktop/tablet window — it just gets more empty margin around
+  // it instead (see mobile-responsive-plan.md's Phase 2 "max scale cap"
+  // open item, resolved here by taking that cap). Kept live for the
+  // component's whole lifetime same as isPortrait above — applied via
+  // inline style only inside the game render branch below, since the
+  // Main Menu never uses .game-canvas at all.
+  const [gameScale, setGameScale] = useState<number>(1);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    function computeScale() {
+      const scaleX = window.innerWidth / GAME_CANVAS_WIDTH;
+      const scaleY = window.innerHeight / GAME_CANVAS_HEIGHT;
+      setGameScale(Math.min(scaleX, scaleY, 1));
+    }
+
+    computeScale();
+    window.addEventListener('resize', computeScale);
+    window.addEventListener('orientationchange', computeScale);
+
+    return () => {
+      window.removeEventListener('resize', computeScale);
+      window.removeEventListener('orientationchange', computeScale);
+    };
+  }, []);
+
   // [BLOCK: Timer Refs]
   // allTimers: every active timer ID — cleared on back-to-menu or skip.
   //   Timers are pushed in directly as they're created, including ones
@@ -493,6 +551,13 @@ function App() {
   // 'slot-player-left'. Read by buildReturnFlights/buildPhase1Flights/
   // buildCascadeFightFlights at flight time to measure flight source/
   // destination rects.
+  //
+  // [Mobile Responsiveness — Phase 2] These stay correct even once these
+  // elements render inside the scaled .game-canvas — getBoundingClientRect()
+  // always returns real, post-transform screen coordinates regardless of
+  // an ancestor's CSS transform, so no changes were needed here or in the
+  // flight-building functions above despite Board/Slot/CardPile now
+  // rendering inside a scaled ancestor.
   const elementRefs = useRef<Record<string, HTMLElement | null>>({});
   const registerRef = useCallback((key: string, el: HTMLElement | null) => {
     elementRefs.current[key] = el;
@@ -884,7 +949,10 @@ function App() {
   // [Mobile Responsiveness] No RotatePrompt here either, per
   // mobile-responsive-plan.md decision #1 — the Main Menu works natively
   // in portrait, the rotate gate is a game-only concern (see the game
-  // render branch below).
+  // render branch below). Also no .game-canvas scaling here — the Main
+  // Menu's own responsive pass (Phase 0) is a separate, simpler mechanism
+  // (clamp()'d padding), not the fixed-design-resolution scaling Phase 2
+  // introduces for the game screen only.
   if (!started) {
     return (
       <div className={styles['app-shell']}>
@@ -897,189 +965,205 @@ function App() {
   }
 
   // [BLOCK: Render — Game]
+  // [Mobile Responsiveness — Phase 2] .app-shell.app-shell--table is now
+  // wrapped in .game-canvas-viewport > .game-canvas (see App.module.css)
+  // — the viewport takes over sizing against the real page (flex: 1,
+  // 100svh, same job .app-shell used to do directly), while .game-canvas
+  // is the fixed 1040x700 design box, scaled via the --game-scale CSS
+  // variable set inline below from gameScale state.
+  //
+  // Everything else in this branch — the two side-bleed art panels,
+  // CardFlightOverlay, and RotatePrompt — stays OUTSIDE this new wrapper,
+  // as direct siblings, exactly as before this pass:
+  //   - Side-bleed panels: background flourish sized against the real
+  //     viewport (50vw-based), not gameplay surface — scaling them would
+  //     crop/distort the art for no benefit (see App.module.css's doc
+  //     comment on those classes).
+  //   - CardFlightOverlay: its flight rects are measured via
+  //     getBoundingClientRect() on elements that now render INSIDE the
+  //     scaled canvas — but that API always returns real, post-transform
+  //     screen coordinates regardless of an ancestor's CSS transform, so
+  //     no changes were needed to the flight-building functions above.
+  //     Keeping the overlay itself outside .game-canvas just avoids ANY
+  //     doubt about this — it draws directly in real viewport space, full
+  //     stop.
+  //   - RotatePrompt: must cover the true viewport regardless of the
+  //     canvas's current scale factor — nesting it inside a transformed
+  //     ancestor would make its own `position: fixed` resolve against
+  //     that ancestor's box instead of the real screen (see
+  //     RotatePrompt.tsx's own doc comment on this).
+  //
   // [Background Art] app-shell--table layered on top of the base
   // app-shell class ONLY here — the wood-grain table background is meant
   // to sit behind the whole game screen (sidebar included), never behind
   // the Main Menu above.
-  //
-  // [Side-Bleed Art] Two fixed, negative-z-index panels rendered as
-  // siblings of app-shell (not children) — see App.module.css's
-  // .app-shell-side doc comment for why fixed + z-index: -1 is what lets
-  // them sit behind the (perfectly normal, static-position) game frame
-  // without any manual width/offset math: the frame's own opaque
-  // background naturally covers whatever these panels render underneath
-  // it, so only the true left/right margins ever show. Reuses menu.jpg —
-  // the same art MainMenu.module.css shows full-bleed on the Main Menu —
-  // but each panel gets its OWN background-position, independently tuned
-  // to frame a person rather than whatever slice the shared single-image
-  // approach happened to land on (see the CSS file's comment for the
-  // starting values and why they'll likely need visual fine-tuning).
-  //
-  // [Mobile Responsiveness — Phase 1] RotatePrompt renders here,
-  // conditionally on isPortrait, as a sibling alongside CardFlightOverlay
-  // — see RotatePrompt.tsx's doc comment for why it must stay outside any
-  // future scale-transform wrapper (Phase 2) despite living in this same
-  // JSX region today.
   return (
     <>
       <div className={styles['app-shell-side--left']} aria-hidden="true" />
       <div className={styles['app-shell-side--right']} aria-hidden="true" />
 
-      <div className={clsx(styles['app-shell'], styles['app-shell--table'])}>
+      <div className={styles['game-canvas-viewport']}>
+        <div
+          className={styles['game-canvas']}
+          style={{ '--game-scale': gameScale } as CSSProperties}
+        >
+          <div className={clsx(styles['app-shell'], styles['app-shell--table'])}>
 
-        {/* [SUB-BLOCK: Left Sidebar — unified wood-panel frame]
-            Replaces the old three-piece floating layout (bare
-            RoundCounter, self-framed RoundHistory, bare PlayFooter) with a
-            single .left-sidebar frame (see App.module.css) split into a
-            header (Round Counter), a flex:1 scrollable body (RoundHistory
-            itself — it now only supplies the scrolling list, no frame of
-            its own, see RoundHistory.module.css), and a footer
-            (Play/Main Menu). Only the middle RoundHistory section
-            scrolls; header and footer stay pinned. */}
-        <div className={styles['left-sidebar']}>
-          <div className={styles['left-sidebar__header']}>
-            <RoundCounter round={round} />
-          </div>
-          <RoundHistory history={roundHistory} />
-          <div className={styles['left-sidebar__footer']}>
-            <PlayFooter
-              phase={phase}
-              onConfirmPlacement={handleConfirmPlacement}
-              onSkip={handleSkip}
-              onBackToMenu={handleBackToMenu}
-              canConfirm={canConfirm}
-              canSkip={canSkip}
-            />
-          </div>
-        </div>
-
-        {/* [SUB-BLOCK: Center — Battlefield + Hand] */}
-        <div className={styles['app-center']}>
-          {phase === 'gameover' ? (
-            <div className={styles['app-gameover']}>
-              <h2>Game Over</h2>
-              <p>
-                {result === 'player' && 'You win!'}
-                {result === 'ai'     && 'The opponent wins.'}
-                {result === 'draw'   && "It's a draw."}
-              </p>
-            </div>
-          ) : (
-            /* [Layout — Centering Fix] Board and the Hand/Stack row are now
-               grouped in one flex-column wrapper (align-items: stretch by
-               default) instead of being two separate children of
-               app-center — see App.module.css's .app-board-column doc
-               comment for why: it lets .app-hand-row inherit Board's own
-               rendered width automatically, which is what makes the row's
-               symmetric side-regions below actually work (they need a
-               stable, Board-matched width to distribute against). */
-            <div className={styles['app-board-column']}>
-              <Board
-                playerSlots={playerSlots}
-                aiSlots={aiSlots}
-                aiHand={aiHand}
-                revealStep={revealStep}
-                selectedCardId={selectedCardId}
-                onSlotClick={handleSlotClick}
-                placementActive={placementActive}
-                selectedAiCardId={selectedAiCardId}
-                onAiCardClick={handleAiCardClick}
-                onAiSlotClick={handleAiSlotClick}
-                onAiSwapCard={(cardId, newType) =>
-                  dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'ai', cardId, newType })
-                }
-                aiStackCount={aiStack.length}
-                playerDiscardCount={playerDiscard.length}
-                aiDiscardCount={aiDiscard.length}
-                dragonOverlayOwner={dragonOverlayOwner}
-                pendingCascade={pendingCascade}
-                cascadeFightIndex={cascadeFightIndex}
-                devMode={devMode}
-                aiStack={aiStack}
-                canEditStacks={canShuffle}
-                onStackSwapCard={(cardId, newType) =>
-                  dispatch({ type: 'DEV_SWAP_STACK_CARD', owner: 'ai', cardId, newType })
-                }
-                registerRef={registerRef}
-              />
-              {/* [Layout — Drift-Proof Hand Row] Three regions instead of a
-                  single centered flex group: a spacer on the left, Hand in
-                  the middle (always centered on the ROW's midpoint — see
-                  App.module.css's .app-hand-row doc comment), and a region
-                  on the right that pins PlayerStackControls flush against
-                  the row's own right edge via justify-content: flex-end. */}
-              <div className={styles['app-hand-row']}>
-                {/* [Layout — Hand Row Symmetric Ghost]
-                    Mirrors PlayerStackControls' actual rendered footprint
-                    (card pile + Shuffle button, stacked in a column) on the
-                    LEFT side of Hand. Previously an empty div: both sides
-                    are flex:1, so the free space itself still split evenly
-                    — but PlayerStackControls' own real content width on the
-                    right stacked on TOP of that equal share, making the
-                    right side wider than the left by that fixed amount.
-                    That silently pulled Hand off the row's true midpoint by
-                    the same fixed number of pixels regardless of hand size
-                    — invisible against a full 5-card hand's own width, but
-                    very visible once the hand shrank to 1-2 cards (see bug
-                    report: "hand moves closer as cards are played").
-                    Invisible/inert (visibility:hidden + pointer-events:none),
-                    same technique as Board.module.css's
-                    .stack-col-wrap__ghost — a real structural clone rather
-                    than a guessed pixel width, so it stays correct
-                    automatically if CardPile or the Shuffle button's own
-                    size ever changes. count=3 forces full depth-stack
-                    rendering to match the real pile's widest/tallest state;
-                    showLabel={false} mirrors the real pile's now-hidden
-                    "You" caption exactly. */}
-                <div className={styles['app-hand-row__side']} aria-hidden="true">
-                  <div
-                    className={boardStyles['stack-col-wrap']}
-                    style={{ visibility: 'hidden', pointerEvents: 'none' }}
-                  >
-                    <CardPile count={3} label="You" variant="stack" showLabel={false} />
-                    <button className={boardStyles['stack-col__shuffle']}>⇄ Shuffle</button>
-                  </div>
-                </div>
-                <Hand
-                  hand={playerHand}
-                  selectedCardId={selectedCardId}
-                  onCardClick={handleCardClick}
-                  disabled={phase !== 'placement'}
-                  devMode={devMode}
-                  stack={playerStack}
-                  onSwapCard={(cardId, newType) =>
-                    dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'player', cardId, newType })
-                  }
+            {/* [SUB-BLOCK: Left Sidebar — unified wood-panel frame]
+                Replaces the old three-piece floating layout (bare
+                RoundCounter, self-framed RoundHistory, bare PlayFooter) with a
+                single .left-sidebar frame (see App.module.css) split into a
+                header (Round Counter), a flex:1 scrollable body (RoundHistory
+                itself — it now only supplies the scrolling list, no frame of
+                its own, see RoundHistory.module.css), and a footer
+                (Play/Main Menu). Only the middle RoundHistory section
+                scrolls; header and footer stay pinned. */}
+            <div className={styles['left-sidebar']}>
+              <div className={styles['left-sidebar__header']}>
+                <RoundCounter round={round} />
+              </div>
+              <RoundHistory history={roundHistory} />
+              <div className={styles['left-sidebar__footer']}>
+                <PlayFooter
+                  phase={phase}
+                  onConfirmPlacement={handleConfirmPlacement}
+                  onSkip={handleSkip}
+                  onBackToMenu={handleBackToMenu}
+                  canConfirm={canConfirm}
+                  canSkip={canSkip}
                 />
-                <div className={clsx(styles['app-hand-row__side'], styles['app-hand-row__side--right'])}>
-                  <PlayerStackControls
-                    count={playerStack.length}
-                    onShuffleStack={handleShuffleStack}
-                    canShuffle={canShuffle}
+              </div>
+            </div>
+
+            {/* [SUB-BLOCK: Center — Battlefield + Hand] */}
+            <div className={styles['app-center']}>
+              {phase === 'gameover' ? (
+                <div className={styles['app-gameover']}>
+                  <h2>Game Over</h2>
+                  <p>
+                    {result === 'player' && 'You win!'}
+                    {result === 'ai'     && 'The opponent wins.'}
+                    {result === 'draw'   && "It's a draw."}
+                  </p>
+                </div>
+              ) : (
+                /* [Layout — Centering Fix] Board and the Hand/Stack row are now
+                   grouped in one flex-column wrapper (align-items: stretch by
+                   default) instead of being two separate children of
+                   app-center — see App.module.css's .app-board-column doc
+                   comment for why: it lets .app-hand-row inherit Board's own
+                   rendered width automatically, which is what makes the row's
+                   symmetric side-regions below actually work (they need a
+                   stable, Board-matched width to distribute against). */
+                <div className={styles['app-board-column']}>
+                  <Board
+                    playerSlots={playerSlots}
+                    aiSlots={aiSlots}
+                    aiHand={aiHand}
+                    revealStep={revealStep}
+                    selectedCardId={selectedCardId}
+                    onSlotClick={handleSlotClick}
+                    placementActive={placementActive}
+                    selectedAiCardId={selectedAiCardId}
+                    onAiCardClick={handleAiCardClick}
+                    onAiSlotClick={handleAiSlotClick}
+                    onAiSwapCard={(cardId, newType) =>
+                      dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'ai', cardId, newType })
+                    }
+                    aiStackCount={aiStack.length}
+                    playerDiscardCount={playerDiscard.length}
+                    aiDiscardCount={aiDiscard.length}
+                    dragonOverlayOwner={dragonOverlayOwner}
+                    pendingCascade={pendingCascade}
+                    cascadeFightIndex={cascadeFightIndex}
                     devMode={devMode}
-                    playerStack={playerStack}
+                    aiStack={aiStack}
                     canEditStacks={canShuffle}
-                    onSwapCard={(cardId, newType) =>
-                      dispatch({ type: 'DEV_SWAP_STACK_CARD', owner: 'player', cardId, newType })
+                    onStackSwapCard={(cardId, newType) =>
+                      dispatch({ type: 'DEV_SWAP_STACK_CARD', owner: 'ai', cardId, newType })
                     }
                     registerRef={registerRef}
                   />
+                  {/* [Layout — Drift-Proof Hand Row] Three regions instead of a
+                      single centered flex group: a spacer on the left, Hand in
+                      the middle (always centered on the ROW's midpoint — see
+                      App.module.css's .app-hand-row doc comment), and a region
+                      on the right that pins PlayerStackControls flush against
+                      the row's own right edge via justify-content: flex-end. */}
+                  <div className={styles['app-hand-row']}>
+                    {/* [Layout — Hand Row Symmetric Ghost]
+                        Mirrors PlayerStackControls' actual rendered footprint
+                        (card pile + Shuffle button, stacked in a column) on the
+                        LEFT side of Hand. Previously an empty div: both sides
+                        are flex:1, so the free space itself still split evenly
+                        — but PlayerStackControls' own real content width on the
+                        right stacked on TOP of that equal share, making the
+                        right side wider than the left by that fixed amount.
+                        That silently pulled Hand off the row's true midpoint by
+                        the same fixed number of pixels regardless of hand size
+                        — invisible against a full 5-card hand's own width, but
+                        very visible once the hand shrank to 1-2 cards (see bug
+                        report: "hand moves closer as cards are played").
+                        Invisible/inert (visibility:hidden + pointer-events:none),
+                        same technique as Board.module.css's
+                        .stack-col-wrap__ghost — a real structural clone rather
+                        than a guessed pixel width, so it stays correct
+                        automatically if CardPile or the Shuffle button's own
+                        size ever changes. count=3 forces full depth-stack
+                        rendering to match the real pile's widest/tallest state;
+                        showLabel={false} mirrors the real pile's now-hidden
+                        "You" caption exactly. */}
+                    <div className={styles['app-hand-row__side']} aria-hidden="true">
+                      <div
+                        className={boardStyles['stack-col-wrap']}
+                        style={{ visibility: 'hidden', pointerEvents: 'none' }}
+                      >
+                        <CardPile count={3} label="You" variant="stack" showLabel={false} />
+                        <button className={boardStyles['stack-col__shuffle']}>⇄ Shuffle</button>
+                      </div>
+                    </div>
+                    <Hand
+                      hand={playerHand}
+                      selectedCardId={selectedCardId}
+                      onCardClick={handleCardClick}
+                      disabled={phase !== 'placement'}
+                      devMode={devMode}
+                      stack={playerStack}
+                      onSwapCard={(cardId, newType) =>
+                        dispatch({ type: 'DEV_SWAP_HAND_CARD', owner: 'player', cardId, newType })
+                      }
+                    />
+                    <div className={clsx(styles['app-hand-row__side'], styles['app-hand-row__side--right'])}>
+                      <PlayerStackControls
+                        count={playerStack.length}
+                        onShuffleStack={handleShuffleStack}
+                        canShuffle={canShuffle}
+                        devMode={devMode}
+                        playerStack={playerStack}
+                        canEditStacks={canShuffle}
+                        onSwapCard={(cardId, newType) =>
+                          dispatch({ type: 'DEV_SWAP_STACK_CARD', owner: 'player', cardId, newType })
+                        }
+                        registerRef={registerRef}
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
-          )}
+
+            {/* [SUB-BLOCK: Right-Edge Spacer — Global Centering Fix]
+                Mirrors .left-sidebar's exact footprint (200px + 14px margin
+                each side = 228px) on the opposite edge of .app-shell, so
+                app-center's remaining flex space is symmetric and its own
+                internal centering lines up with the page's true center
+                instead of the sidebar-skewed leftover space. Purely
+                structural — no content, never interactive. See
+                App.module.css's .app-shell__spacer doc comment. */}
+            <div className={styles['app-shell__spacer']} aria-hidden="true" />
+
+          </div>
         </div>
-
-        {/* [SUB-BLOCK: Right-Edge Spacer — Global Centering Fix]
-            Mirrors .left-sidebar's exact footprint (200px + 14px margin
-            each side = 228px) on the opposite edge of .app-shell, so
-            app-center's remaining flex space is symmetric and its own
-            internal centering lines up with the page's true center
-            instead of the sidebar-skewed leftover space. Purely
-            structural — no content, never interactive. See
-            App.module.css's .app-shell__spacer doc comment. */}
-        <div className={styles['app-shell__spacer']} aria-hidden="true" />
-
       </div>
 
       <CardFlightOverlay flights={flights} durationMs={RETURN_FLIGHT_MS} />
@@ -1089,7 +1173,9 @@ function App() {
           RotatePrompt.module.css) — no reliance on DOM order for that,
           since nothing in this tree creates a stacking context that would
           trap it, but last-in-source is the clearest convention for "this
-          covers everything else" regardless. */}
+          covers everything else" regardless. Deliberately a sibling of
+          .game-canvas-viewport, not a descendant — see this branch's own
+          top comment and RotatePrompt.tsx's doc comment for why. */}
       {isPortrait && <RotatePrompt />}
     </>
   );
