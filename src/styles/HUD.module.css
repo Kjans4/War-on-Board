@@ -151,6 +151,21 @@
   transform: translateY(1px);
 }
 
+/* [BLOCK: Mobile Responsiveness — Phase 3: Footer Row]
+   Wraps "↺ Main Menu" and the new fullscreen icon side by side, in place
+   of the menu link rendering alone as the sole footer child below
+   Play/Skip. `justify-content: center` keeps the pair centered under the
+   Play/Skip button above regardless of whether the fullscreen icon is
+   present (it's conditionally hidden when unsupported — see HUD.tsx) —
+   a single child collapses to plain centered text exactly as it looked
+   before this pass. */
+.hud-sidebar__footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
 .hud-sidebar__menu-link {
   padding: 6px;
   border: none;
@@ -161,5 +176,23 @@
   transition: color 0.15s;
 }
 .hud-sidebar__menu-link:hover {
+  color: #999;
+}
+
+/* [BLOCK: Mobile Responsiveness — Phase 3: Fullscreen Icon Button]
+   Small, icon-only, same muted resting color as the menu link beside it
+   so the pair reads as one quiet secondary-actions row rather than the
+   fullscreen icon competing for attention against Play/Skip above. */
+.hud-sidebar__fullscreen-btn {
+  padding: 6px;
+  border: none;
+  background: transparent;
+  color: #555;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.hud-sidebar__fullscreen-btn:hover {
   color: #999;
 }

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import styles from '../styles/MainMenu.module.css';
+import { useFullscreen } from '../hooks/useFullscreen';
 
 // [BLOCK: Dev Test Visibility Flag]
 // Dev Test Mode's underlying wiring (prop, handler, button markup) stays
@@ -33,6 +34,17 @@ interface MainMenuProps {
 // [BLOCK: Component]
 export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
   const [view, setView] = useState<MenuView>('root');
+
+  // [BLOCK: Mobile Responsiveness — Phase 3: Fullscreen Toggle]
+  // Prominent placement per mobile-responsive-plan.md's Phase 3 — a
+  // normal-sized stone button alongside Play/Settings/How to Play when
+  // the Fullscreen API is available. On iOS Safari (no element
+  // Fullscreen API at all, on any current version) this shows a short
+  // hint instead of hiding silently — the Main Menu has room for it,
+  // unlike the small in-game footer icon (see HUD.tsx's PlayFooter,
+  // which hides its own equivalent control entirely instead, since that
+  // spot is too tight for explanatory text).
+  const { isFullscreen, isSupported: fullscreenSupported, toggleFullscreen } = useFullscreen();
 
   function handleBack() {
     setView('root');
@@ -92,6 +104,26 @@ export function MainMenu({ onSelectRandom, onSelectDevTest }: MainMenuProps) {
             >
               How to Play
             </button>
+
+            {/* [Mobile Responsiveness — Phase 3] Optional feature per the
+                plan — additive, no dependency on Phases 1/2 having
+                "shipped" any particular way. Reuses the same stone/btn
+                classes as the buttons above rather than introducing a
+                visually distinct control, so it doesn't compete for
+                attention against Play. */}
+            {fullscreenSupported && (
+              <button
+                className={clsx(styles['main-menu__stone'], styles['main-menu__btn'])}
+                onClick={toggleFullscreen}
+              >
+                {isFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen'}
+              </button>
+            )}
+            {!fullscreenSupported && (
+              <p className={styles['main-menu__fullscreen-hint']}>
+                Add to Home Screen for a fullscreen-like experience
+              </p>
+            )}
 
             {/* [SUB-BLOCK: Dev Test Mode entry — see dev-test-mode-plan.md]
                 Hidden from the shipped menu per SHOW_DEV_TEST_BUTTON

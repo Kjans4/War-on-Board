@@ -4,6 +4,7 @@ import type { GamePhase } from '../types/game';
 import { TOTAL_ROUNDS } from '../types/game';
 import clsx from 'clsx';
 import styles from '../styles/HUD.module.css';
+import { useFullscreen } from '../hooks/useFullscreen';
 
 // [BLOCK: Round Counter Props]
 interface RoundCounterProps {
@@ -59,6 +60,17 @@ export function PlayFooter({
   const isSkip = canSkip;
   const anyActive = isPlay || isSkip;
 
+  // [BLOCK: Mobile Responsiveness — Phase 3: Fullscreen Toggle]
+  // Small persistent icon next to "↺ Main Menu", per
+  // mobile-responsive-plan.md's Phase 3 suggested placement — lets a
+  // player enter/exit fullscreen mid-game without backing out to the
+  // Main Menu. Hidden entirely (not a hint) when the Fullscreen API isn't
+  // available — unlike MainMenu.tsx's equivalent control, this footer is
+  // small and space-constrained, so a silent hide is the better fit here;
+  // see useFullscreen.ts's own doc comment for why iOS Safari specifically
+  // never supports this at all.
+  const { isFullscreen, isSupported: fullscreenSupported, toggleFullscreen } = useFullscreen();
+
   function handleClick() {
     if (isPlay) onConfirmPlacement();
     else if (isSkip) onSkip();
@@ -77,9 +89,26 @@ export function PlayFooter({
       >
         {isSkip ? 'Skip' : 'Play'}
       </button>
-      <button className={styles['hud-sidebar__menu-link']} onClick={onBackToMenu}>
-        ↺ Main Menu
-      </button>
+
+      {/* [Mobile Responsiveness — Phase 3] Menu link and fullscreen icon
+          sit side by side in their own row now, rather than the menu
+          link alone stacked under Play/Skip — see
+          HUD.module.css's .hud-sidebar__footer-row. */}
+      <div className={styles['hud-sidebar__footer-row']}>
+        <button className={styles['hud-sidebar__menu-link']} onClick={onBackToMenu}>
+          ↺ Main Menu
+        </button>
+        {fullscreenSupported && (
+          <button
+            className={styles['hud-sidebar__fullscreen-btn']}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          >
+            {isFullscreen ? '⤢' : '⛶'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

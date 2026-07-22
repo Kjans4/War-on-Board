@@ -1,8 +1,47 @@
 /* src/styles/MainMenu.module.css */
 
-/* [Background Art]
-   [BLOCK: Layout]
-   [BLOCK: Mobile Responsiveness ]*/
+/* [Background Art] menu.jpg (a battle-scene illustration, 5000x2812) is
+   applied via background-size: cover so it fills the container at any
+   viewport size without stretching or repeating. A dark linear-gradient
+   is layered on top of the image in the SAME background-image
+   declaration (rather than a separate overlay element) so light
+   title/button text stays legible over busy parts of the art.
+
+   [BLOCK: Layout — Title Pinned Higher]
+   Was a single centered flex column (title + subtitle + buttons all
+   riding the same vertical midpoint) — per design direction, the title
+   now sits near the TOP of the screen instead, with the interactive
+   content (buttons / sub-view panels) centered in the space left below
+   it. Achieved by splitting into two children — .main-menu__header
+   (auto-height, sits at the top via this container's own
+   justify-content) and .main-menu__content (flex: 1, centers itself
+   within whatever space remains) — rather than moving the title with a
+   fixed pixel offset, so this stays correct across viewport heights.
+
+   [BLOCK: Mobile Responsiveness — Phase 0]
+   Padding is a flat `140px 160px 40px` on every normal desktop/tablet
+   window — unchanged from before this pass. A continuous vh-based
+   clamp() was tried first (e.g. `clamp(24px, 8vh, 140px)`) but that
+   scales down at ANY viewport height, not just short mobile ones — at a
+   perfectly ordinary ~775px-tall browser window, 8vh (~62px) is already
+   smaller than the 140px max, so the title/buttons silently crept up
+   toward the top on desktop too (see the bug this replaced). Switched to
+   a `max-height` media query instead: padding only shrinks below a real
+   "short viewport" threshold (500px tall — comfortably covers phone
+   landscape heights, ~320-430px, with margin), so every window taller
+   than that renders IDENTICALLY to the original fixed padding, full
+   stop, regardless of exactly how tall it is. The floor values inside
+   the query (16px/16px/12px) keep the title/content from ever sitting
+   flush against the screen edge on the shortest supported phones.
+   `.main-menu__title` (h1, 45px) and `.main-menu__panel` (already
+   viewport-relative via min(460px, 92vw) / min(440px, 58vh) — see below)
+   were checked against real phone landscape dimensions (e.g. 667x375,
+   844x390) and hold up correctly under the query's reduced padding; no
+   changes needed to either. Confirmed `.main-menu__title`'s own 45px
+   also always wins over index.css's h1 element-selector rules (56px, or
+   36px under its own max-width:1024px query) on specificity (class
+   beats bare element selector) — no cross-file conflict regardless of
+   viewport width. */
 .main-menu {
   display: flex;
   flex-direction: column;
@@ -166,6 +205,23 @@
   width: min(220px, 80vw);
   padding: 14px 28px;
   font-size: 18px;
+}
+
+/* [BLOCK: Mobile Responsiveness — Phase 3: Fullscreen Hint]
+   Shown in place of the Fullscreen button (see MainMenu.tsx) on browsers
+   where the Fullscreen API isn't available at all — chiefly iOS Safari,
+   on every current version. Small and muted rather than styled like a
+   warning — it's informational, not an error state. Capped at a modest
+   max-width so it wraps into a short two-line block rather than
+   stretching the full menu width, which would look oddly prominent for
+   what's just a small aside. */
+.main-menu__fullscreen-hint {
+  margin: 4px 0 0;
+  max-width: 220px;
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
 }
 
 /* [BLOCK: Disabled State — Smart, "Coming soon"]
