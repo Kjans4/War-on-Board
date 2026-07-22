@@ -17,6 +17,7 @@ import { MainMenu } from './components/MainMenu';
 import { CardFlightOverlay } from './components/CardFlightOverlay';
 import type { FlightItem } from './components/CardFlightOverlay';
 import { RotatePrompt } from './components/RotatePrompt';
+import { FullscreenExitButton } from './components/FullscreenExitButton';
 import type {
   Card as CardType,
   SlotKey,
@@ -1167,6 +1168,17 @@ function App() {
       </div>
 
       <CardFlightOverlay flights={flights} durationMs={RETURN_FLIGHT_MS} />
+
+      {/* [Mobile Responsiveness] A persistent, easy-to-find way out of
+          fullscreen — renders nothing at all unless actually in
+          fullscreen (see FullscreenExitButton.tsx). Sits at z-index: 700,
+          deliberately above RotatePrompt's 600, so it stays reachable
+          even if the player ends up back in portrait while fullscreen is
+          still active — otherwise that combination would leave someone
+          stuck looking at the rotate prompt with no visible exit.
+          Sibling of .game-canvas-viewport, same reasoning as
+          RotatePrompt below. */}
+      <FullscreenExitButton />
 
       {/* [Mobile Responsiveness — Phase 1] Rendered last so it stacks on
           top of everything above via its own z-index: 600 (see

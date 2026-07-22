@@ -1,0 +1,42 @@
+/* src/styles/FullscreenExitButton.module.css */
+
+/* [BLOCK: Mobile Responsiveness — Fullscreen Exit Button]
+   Fixed to the true viewport's top-right corner — not the game canvas's
+   corner, since this renders as a sibling of .game-canvas-viewport (see
+   FullscreenExitButton.tsx's doc comment). z-index: 700 is deliberately
+   higher than RotatePrompt.module.css's 600 so this stays clickable even
+   when the rotate overlay is also showing (see that file for why). A
+   solid circular scrim (not fully opaque, not a translucent hint) keeps
+   it legible over any part of the board or side-bleed art sitting behind
+   it, in either orientation. Sized at 40x40 — comfortably tappable on a
+   touch device, matching general touch-target guidance rather than the
+   smaller 20x20 dev-tooling controls elsewhere in this codebase (see
+   mobile-responsive-plan.md's Phase 4 note on touch-target sizing). */
+.fullscreen-exit {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 700;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(6, 6, 10, 0.65);
+  color: #e8dfc8;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.fullscreen-exit:hover {
+  background: rgba(6, 6, 10, 0.85);
+  color: #fff;
+}
+
+.fullscreen-exit:active {
+  transform: scale(0.94);
+}
